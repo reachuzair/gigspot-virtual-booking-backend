@@ -1,0 +1,70 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environment
+venv/
+env/
+
+# Django-related files
+*.log
+*.pot
+*.pyc
+*.pyo
+
+# Local settings and configuration files
+local_settings.py
+.env
+
+# Media and static files
+/media/
+staticfiles/
+static/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# MacOS system files
+.DS_Store
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Test output
+*.test.*
+
+# Pipfile and lock files if not in use
+Pipfile
+Pipfile.lock
+
+# Pyre type checker
+.pyre/
+
+# Celery beat schedule file
+celerybeat-schedule
+celerybeat.pid
+
+# SQL dumps
+*.sql
+*.dump
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Sentry files
+.sentryclirc
+
