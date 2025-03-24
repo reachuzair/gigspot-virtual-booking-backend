@@ -72,3 +72,17 @@ class Artist(models.Model):
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
+
+class Venue(models.Model):
+    id = models.AutoField(primary_key=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    verification_docs = models.FileField(upload_to='venue_verification_docs', blank=True, null=True)
+    location = models.JSONField(default=list)
+    capacity = models.IntegerField(default=0)
+    amenities = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
