@@ -6,6 +6,7 @@ from rest_framework import status
 from django.contrib.auth import login
 from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer
+from utils.email import send_templated_email
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -40,3 +41,52 @@ def signup_view(request):
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp(request):
+    try:
+        email = request.data.get('email')
+        otp = request.data.get('otp')
+        
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if user.ver_code != otp:
+            return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if user.email_verfied:
+            return Response({"detail": "Email already verified"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if user.ver_code_expires < timezone.now():
+            return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.email_verfied = True
+        user.ver_code = None
+        user.ver_code_expires = None
+        user.save()
+        
+        return Response({"detail": "Email verified successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def resend_otp(request, email):
+    try:
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if user.email_verfied:
+            return Response({"detail": "Email already verified"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        otp = user.gen_otp()
+        send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
+        
+        return Response({"detail": "OTP sent successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
