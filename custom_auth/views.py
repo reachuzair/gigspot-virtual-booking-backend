@@ -22,19 +22,14 @@ def signup_view(request):
             if role == ROLE_CHOICES.ARTIST:
                 Artist.objects.create(
                     user=user,
-                    first_name=request.data.get('first_name', ''),
-                    last_name=request.data.get('last_name', '')
                 )
             elif role == ROLE_CHOICES.VENUE:
                 Venue.objects.create(
                     user=user,
-                    name=request.data.get('name', '')
                 )
             elif role == ROLE_CHOICES.FAN:
                 Fan.objects.create(
                     user=user,
-                    first_name=request.data.get('first_name', ''),
-                    last_name=request.data.get('last_name', '')
                 )
             
             return Response({

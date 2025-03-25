@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block title %}OTP Verification{% endblock %}
+
+{% block header %}OTP Verification{% endblock %}
+
+{% block content %}
+    <p>Enter the following OTP to verify your email address:</p>
+    <p>{{ otp }}</p>
+    <p>This OTP will expire in 60 minutes.</p>
+{% endblock %}

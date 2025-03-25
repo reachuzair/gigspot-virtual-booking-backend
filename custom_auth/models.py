@@ -1,5 +1,8 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
+from datetime import timedelta
+import random
 
 class UserManager(BaseUserManager):
     def create_user(self, username, email, password=None, **extra_fields):
@@ -30,6 +33,7 @@ class ROLE_CHOICES(models.TextChoices):
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.AutoField(primary_key=True)
     username = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255, default="")
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=255, choices=ROLE_CHOICES.choices, default=ROLE_CHOICES.FAN)
     profileCompleted = models.BooleanField(default=False)
@@ -49,6 +53,14 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+    
+    def gen_otp(self):
+        """Generate a 6-digit numeric OTP and save it with an expiry date."""
+        otp = random.randint(100000, 999999)  # Generate a random number between 100000 and 999999
+        self.ver_code = otp  # Save OTP to ver_code field
+        self.ver_code_expires = timezone.now() + timedelta(minutes=60)  # Set expiry to 60 minutes from now
+        self.save()  # Save the user instance to persist changes
+        return otp
 
 class PerformanceTier(models.TextChoices):
     FRESH_TALENT = 'fresh_talent', 'Fresh Talent'
@@ -62,8 +74,6 @@ class PerformanceTier(models.TextChoices):
 class Artist(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    first_name = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255, blank=True, null=True)
     verification_docs = models.FileField(upload_to='artist_verification_docs', blank=True, null=True)
     performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
     buzz_score = models.IntegerField(default=0)
@@ -77,7 +87,6 @@ class Artist(models.Model):
 class Venue(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    name = models.CharField(max_length=255)
     verification_docs = models.FileField(upload_to='venue_verification_docs', blank=True, null=True)
     location = models.JSONField(default=list)
     capacity = models.IntegerField(default=0)
@@ -91,8 +100,6 @@ class Venue(models.Model):
 class Fan(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    first_name = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
