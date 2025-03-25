@@ -1,6 +1,6 @@
 # views.py
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import login
@@ -111,4 +111,14 @@ def login_view(request):
         return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    try:
+        logout(request)  # No need to pass user explicitly
+        return Response({"detail": "Logout successful"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
