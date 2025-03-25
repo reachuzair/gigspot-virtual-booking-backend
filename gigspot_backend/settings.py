@@ -74,7 +74,7 @@ ROOT_URLCONF = 'gigspot_backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -150,3 +150,15 @@ SIMPLE_JWT = {
 # CORS Settings (if needed)
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
+
+
+# Email Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # For production
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development (emails print to console)
+
+EMAIL_HOST = os.getenv('EMAIL_HOST')  # e.g., smtp.gmail.com, smtp.sendgrid.net
+EMAIL_PORT = 587  # Typically 587 for TLS, 465 for SSL
+EMAIL_USE_TLS = True  # Use TLS (or EMAIL_USE_SSL = True for SSL)
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Your email address
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Your email password or app-specific password
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')  # Default sender email
