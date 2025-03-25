@@ -35,6 +35,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     profileCompleted = models.BooleanField(default=False)
     ver_code = models.CharField(max_length=255, blank=True, null=True)
     ver_code_expires = models.DateTimeField(blank=True, null=True)
+    email_verfied = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)  # Required for Django admin
     is_active = models.BooleanField(default=True)  # Required for Django admin
