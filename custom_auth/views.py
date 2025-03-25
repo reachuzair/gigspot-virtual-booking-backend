@@ -7,6 +7,7 @@ from django.contrib.auth import login
 from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer
 from utils.email import send_templated_email
+from django.utils import timezone
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -42,7 +43,7 @@ def signup_view(request):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['POST'])
+@api_view(['PUT'])
 @permission_classes([AllowAny])
 def verify_otp(request):
     try:
@@ -89,4 +90,25 @@ def resend_otp(request, email):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    try:
+        email = request.data.get('email')
+        password = request.data.get('password')
+        
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        if not user.check_password(password):
+            return Response({"detail": "Invalid password"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not user.email_verfied:
+            return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        login(request, user)
+        return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
