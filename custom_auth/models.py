@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
+from django.utils.text import slugify
 import random
 
 class UserManager(BaseUserManager):
@@ -30,6 +31,14 @@ class ROLE_CHOICES(models.TextChoices):
     VENUE = 'venue', 'Venue'
     FAN = 'fan', 'Fan'
 
+def user_profile_image_path(instance, filename):
+    # Generate a unique filename using username and timestamp
+    import time
+    timestamp = int(time.time())
+    extension = filename.split('.')[-1].lower()
+    new_filename = f"{slugify(instance.username)}_{timestamp}.{extension}"
+    return f'profile_images/{new_filename}'
+
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.AutoField(primary_key=True)
     username = models.CharField(max_length=255, unique=True)
@@ -37,7 +46,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=255, choices=ROLE_CHOICES.choices, default=ROLE_CHOICES.FAN)
     profileCompleted = models.BooleanField(default=False)
-    profileImage = models.ImageField(upload_to='profile_images/', blank=True, null=True, default=None)
+    profileImage = models.ImageField(upload_to=user_profile_image_path, blank=True, null=True, default=None)
     ver_code = models.CharField(max_length=255, blank=True, null=True)
     ver_code_expires = models.DateTimeField(blank=True, null=True)
     email_verfied = models.BooleanField(default=False)
