@@ -24,12 +24,14 @@ def create_notification(user, notification_type, message, **kwargs):
         async_to_sync(channel_layer.group_send)(
             f"notifications_{user.id}",
             {
-                "type": "send_notification",
-                "content": {
+                "type": "notification",  # This must match the consumer method name
+                "content": {  # This matches what the consumer expects
                     "message": message,
                     "description": kwargs.get('description', ''),
+                    "notification_type": notification_type,
+                    # Include any other fields your consumer expects
                 },
-            },
+            }
         )
     
     if user.settings.notify_by_email:

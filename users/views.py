@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from custom_auth.models import User, Artist, Venue, Fan
 from custom_auth.models import ROLE_CHOICES
+from .models import UserSettings
+from rt_notifications.utils import create_notification
 
 # Create your views here.
 
@@ -80,3 +82,31 @@ def update_profile_image(request):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_notification_settings(request):
+    try:
+        user = request.user
+        key = request.data.get('key')
+        value = request.data.get('value')
+        
+        if not key or not value:
+            return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_settings = UserSettings.objects.filter(user=user).first()
+        if not user_settings:
+            user_settings = UserSettings.objects.create(user=user)
+    
+        allowed_keys = ['notify_by_email', 'notify_by_app'] 
+        if key not in allowed_keys:
+            return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if value not in [True, False]:
+            return Response({"detail": "Value must be a boolean"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        setattr(user_settings, key, value)
+        user_settings.save()
+        
+        return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
