@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ROLE_CHOICES
 from utils.email import send_templated_email
+from users.models import UserSettings
 
 User = get_user_model()
 
@@ -33,6 +34,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         # Remove role-specific fields before user creation
         
         user = User.objects.create_user(**validated_data)
+        UserSettings.objects.create(user=user)
 
         otp = user.gen_otp()
         send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
