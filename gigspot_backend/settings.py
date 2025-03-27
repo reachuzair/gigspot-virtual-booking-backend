@@ -44,8 +44,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'channels',
     'api',
     'custom_auth',
+    'rt_notifications',
 ]
 
 REST_FRAMEWORK = {
@@ -88,6 +90,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'gigspot_backend.wsgi.application'
+ASGI_APPLICATION = 'gigspot_backend.asgi.application'
+
+# Channels Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [(os.getenv('REDIS_HOST', 'localhost'), 6379)],
+        },
+    },
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
