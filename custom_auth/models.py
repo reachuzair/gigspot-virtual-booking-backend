@@ -37,6 +37,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=255, choices=ROLE_CHOICES.choices, default=ROLE_CHOICES.FAN)
     profileCompleted = models.BooleanField(default=False)
+    profileImage = models.ImageField(upload_to='profile_images/', blank=True, null=True, default=None)
     ver_code = models.CharField(max_length=255, blank=True, null=True)
     ver_code_expires = models.DateTimeField(blank=True, null=True)
     email_verfied = models.BooleanField(default=False)
