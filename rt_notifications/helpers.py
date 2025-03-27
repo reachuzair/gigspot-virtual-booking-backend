@@ -1,10 +1,14 @@
-from django.core.mail import send_mail
 from dotenv import load_dotenv
+from utils.email import send_templated_email
 import os
 
 load_dotenv()
 
-def send_notify_email(email, subject, message):
-    from_email = os.getenv('EMAIL_HOST_USER')  # Replace with your sender email
+def send_notify_templated_email(email, notification_type, message, description):
     recipient_list = [email]
-    send_mail(subject, message, from_email, recipient_list)
+    if notification_type == 'message':
+        send_templated_email(message, recipient_list, 'notification_message', {'message': message, 'description': description})
+    elif notification_type == 'booking':
+        send_templated_email(message, recipient_list, 'notification_booking', {'message': message, 'description': description})
+    elif notification_type == 'system':
+        send_templated_email(message, recipient_list, 'notification_system', {'message': message, 'description': description})

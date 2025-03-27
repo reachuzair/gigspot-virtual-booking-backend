@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from notifications.signals import notify
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-from .helpers import send_notify_email
+from .helpers import send_notify_templated_email
 
 def create_notification(user, notification_type, message, **kwargs):
     """
@@ -33,4 +33,4 @@ def create_notification(user, notification_type, message, **kwargs):
         )
     
     if user.settings.notify_by_email:
-        send_notify_email(user.email, message, kwargs.get('description', ''))
+        send_notify_templated_email(user.email, notification_type, message, kwargs.get('description', ''))

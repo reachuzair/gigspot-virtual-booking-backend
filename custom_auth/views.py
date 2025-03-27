@@ -8,6 +8,7 @@ from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer
 from utils.email import send_templated_email
 from django.utils import timezone
+from rt_notifications.utils import create_notification
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -108,6 +109,7 @@ def login_view(request):
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         login(request, user)
+        create_notification(user, 'system', 'Recent Activity', description='You have successfully logged in.')
         return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
