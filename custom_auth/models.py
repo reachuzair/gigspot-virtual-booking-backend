@@ -85,6 +85,7 @@ class Artist(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     verification_docs = models.FileField(upload_to='artist_verification_docs', blank=True, null=True)
+    logo = models.ImageField(upload_to='artist_logo', blank=True, null=True)
     performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)

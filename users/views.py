@@ -110,3 +110,46 @@ def update_notification_settings(request):
         return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_user_profile(request):
+    try:
+        user = request.user
+        key = request.data.get('key')
+        value = request.data.get('value')
+        
+        if not key or not value:
+            return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        allowed_keys = ['name', 'username']
+        if key not in allowed_keys:
+            return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if key == 'name':
+            user.name = value
+        elif key == 'username':
+            if User.objects.filter(username=value).exists():
+                return Response({"detail": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+            user.username = value
+        else:
+            return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.save()
+        
+        return Response({"detail": "Profile updated successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_user(request):
+    try:
+        user = request.user
+        user.is_deleted = True
+        user.is_active = False
+        user.save()
+        return Response({"detail": "User deleted successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
