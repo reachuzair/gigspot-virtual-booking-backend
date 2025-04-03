@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'custom_auth',
     'rt_notifications',
     'users',
+    'gigs'
 ]
 
 REST_FRAMEWORK = {
