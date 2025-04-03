@@ -6,6 +6,8 @@ from custom_auth.models import User, Artist, Venue, Fan
 from custom_auth.models import ROLE_CHOICES
 from .models import UserSettings
 from rt_notifications.utils import create_notification
+from django.forms.models import model_to_dict
+from django.core.files.storage import default_storage
 
 # Create your views here.
 
@@ -14,36 +16,35 @@ from rt_notifications.utils import create_notification
 def user_profile(request):
     try:
         user = request.user
+        response_data = {
+            'id': user.id,
+            'email': user.email,
+            'role': user.role
+        }
+        
+        def get_artist_data(artist):
+            artist_data = model_to_dict(artist, exclude=['verification_docs', 'logo'])
+            artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs else None
+            artist_data['logo'] = artist.logo.url if artist.logo else None
+            return artist_data
+            
+        def get_venue_data(venue):
+            venue_data = model_to_dict(venue, exclude=['verification_docs'])
+            venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
+            return venue_data
+            
         if user.role == ROLE_CHOICES.ARTIST:
-            artist = Artist.objects.filter(user=user).first()
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'role': user.role,
-                'artist': artist
-            })
+            artist = Artist.objects.get(user=user)
+            response_data['artist'] = get_artist_data(artist)
         elif user.role == ROLE_CHOICES.VENUE:
-            venue = Venue.objects.filter(user=user).first()
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'role': user.role,
-                'venue': venue
-            })
+            venue = Venue.objects.get(user=user)
+            response_data['venue'] = get_venue_data(venue)
         elif user.role == ROLE_CHOICES.FAN:
-            fan = Fan.objects.filter(user=user).first()
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'role': user.role,
-                'fan': fan
-            })
-        else:
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'role': user.role
-            })
+            fan = Fan.objects.get(user=user)
+            response_data['fan'] = model_to_dict(fan)
+            
+        return Response(response_data)
+        
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -152,4 +153,3 @@ def delete_user(request):
         return Response({"detail": "User deleted successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
