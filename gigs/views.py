@@ -79,3 +79,36 @@ def update_gig_live_status(request, id):
         }, status=status.HTTP_200_OK)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_gig(request, id):
+    try:
+        gig = Gig.objects.get(id=id)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    key = request.data.get('key', None)
+    value = request.data.get('value', None)
+
+    if not key or not value:
+        return Response({'error': 'Invalid key or value'}, status=status.HTTP_400_BAD_REQUEST)
+
+    allowed_keys = ['name', 'description', 'startDate', 'endDate', 'eventStartDate', 'eventEndDate', 'max_artist', 'flyer_text']
+    if key not in allowed_keys:
+        return Response({'error': 'Invalid key'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if key == 'is_live':
+        return update_gig_live_status(request, id)
+
+    serializer = GigSerializer(gig, data={key: value})
+    if serializer.is_valid():
+        serializer.save()
+        create_notification(request.user, 'system', 'Gig updated successfully', **gig.__dict__)
+        return Response({
+            'gig': serializer.data,
+            'message': 'Gig updated successfully'
+        }, status=status.HTTP_200_OK)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
