@@ -24,6 +24,7 @@ class GigSerializer(serializers.ModelSerializer):
             'max_artist',
             'flyer_bg',
             'flyer_bg_url',
+            'is_live',
             'flyer_text',
             'created_at',
             'updated_at'

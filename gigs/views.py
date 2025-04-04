@@ -32,17 +32,18 @@ def create_gig(request):
         return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     try:
-        venue = Venue.objects.get(user=user)
+        venue = Venue.objects.select_related('user').get(user=user)
     except Venue.DoesNotExist:
         return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
     data['venue'] = {'id': venue.id}
+    data['is_live'] = True
     
     serializer = GigSerializer(data=data)
     if serializer.is_valid():
         gig = serializer.save()
-        create_notification(request.user, 'Gig created successfully', {'name': gig.name, 'description': gig.description, 'startDate': gig.startDate, 'endDate': gig.endDate, 'venue': venue.name})
+        create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
         return Response({
             'gig': serializer.data,
             'message': 'Gig created successfully'

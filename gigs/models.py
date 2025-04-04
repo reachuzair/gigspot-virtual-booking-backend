@@ -20,6 +20,7 @@ class Gig(models.Model):
     max_artist = models.IntegerField()
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
     flyer_text = models.CharField(max_length=255, blank=True, null=True)
+    is_live = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

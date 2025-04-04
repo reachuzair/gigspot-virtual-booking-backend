@@ -1,0 +1,17 @@
+{% extends './base.html' %}
+
+{% block title %}{{ message }}{% endblock %}
+
+{% block header %}{{ message }}{% endblock %}
+
+{% block content %}
+    <h2>You have successfully created a new gig.</h2>
+    <p>Gig Name: {{ name }}</p>
+    <p>Description: {{ description }}</p>
+    <p>Booking Start Date: {{ startDate }}</p>
+    <p>Booking End Date: {{ endDate }}</p>
+    <p>Event Start Date: {{ eventStartDate }}</p>
+    <p>Event End Date: {{ eventEndDate }}</p>
+    <p>Venue: {{ venue }}</p>
+    <p>Status is <strong style="color: green;">live</strong>, you can update it anytime in your gig settings.</p>
+{% endblock %}

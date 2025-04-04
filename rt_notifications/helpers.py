@@ -4,11 +4,11 @@ import os
 
 load_dotenv()
 
-def send_notify_templated_email(email, notification_type, message, description):
+def send_notify_templated_email(email, notification_type, message, **kwargs):
     recipient_list = [email]
     if notification_type == 'message':
-        send_templated_email(message, recipient_list, 'notification_message', {'message': message, 'description': description})
+        send_templated_email(message, recipient_list, 'notification_message', {'message': message, 'description': kwargs.get('description', '')})
     elif notification_type == 'booking':
-        send_templated_email(message, recipient_list, 'notification_booking', {'message': message, 'description': description})
+        send_templated_email(message, recipient_list, 'notification_booking', {'message': message, 'description': kwargs.get('description', '')})
     elif notification_type == 'system':
-        send_templated_email(message, recipient_list, 'notification_system', {'message': message, 'description': description})
+        send_templated_email(message, recipient_list, 'notification_system', {'message': message, 'description': kwargs.get('description', '')})

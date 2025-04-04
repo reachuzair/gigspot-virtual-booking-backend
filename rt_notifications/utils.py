@@ -35,4 +35,4 @@ def create_notification(user, notification_type, message, **kwargs):
         )
     
     if user.settings.notify_by_email:
-        send_notify_templated_email(user.email, notification_type, message, kwargs.get('description', ''))
+        send_notify_templated_email(user.email, notification_type, message, **kwargs)
