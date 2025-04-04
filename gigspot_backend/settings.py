@@ -49,7 +49,8 @@ INSTALLED_APPS = [
     'custom_auth',
     'rt_notifications',
     'users',
-    'gigs'
+    'gigs',
+    'subscriptions'
 ]
 
 REST_FRAMEWORK = {
@@ -181,3 +182,8 @@ EMAIL_USE_TLS = True  # Use TLS (or EMAIL_USE_SSL = True for SSL)
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Your email address
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Your email password or app-specific password
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')  # Default sender email
+
+
+# Stripe Configuration
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')

@@ -98,6 +98,9 @@ class Artist(models.Model):
     state = models.CharField(max_length=255, blank=True, null=True)
     performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
     subscription_tier = models.CharField(max_length=255, choices=SubscriptionTier.choices, default=SubscriptionTier.STARTER)
+    shows_created = models.PositiveIntegerField(default=0)
+    active_collaborations = models.ManyToManyField('self', symmetrical=False)
+
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -105,6 +108,17 @@ class Artist(models.Model):
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
+
+    def can_invite(self, target_tier):
+        INVITATION_RULES = {
+            'GOLIATH': ['ROCKSTAR', 'SCENE_KING', 'UP_AND_COMING', 'NEW_BLOOD', 'FRESH_TALENT'],
+            'ROCKSTAR': ['SCENE_KING', 'UP_AND_COMING', 'NEW_BLOOD', 'FRESH_TALENT'],
+            'SCENE_KING': ['UP_AND_COMING', 'NEW_BLOOD', 'FRESH_TALENT'],
+            'UP_AND_COMING': ['NEW_BLOOD', 'FRESH_TALENT'],
+            'NEW_BLOOD': ['FRESH_TALENT'],
+            'FRESH_TALENT': []
+        }
+        return target_tier in INVITATION_RULES.get(self.performance_tier, [])
 
 class Venue(models.Model):
     id = models.AutoField(primary_key=True)
