@@ -64,7 +64,7 @@ def update_gig_live_status(request, id):
     if not isinstance(is_live, bool):
         return Response({'error': 'Invalid live status'}, status=status.HTTP_400_BAD_REQUEST)
     
-    serializer = GigSerializer(gig, data={'is_live': not is_live})
+    serializer = GigSerializer(gig, data={'is_live': is_live})
     if serializer.is_valid():
         serializer.save()
         create_notification(request.user, 'system', 'Gig live status updated', **gig.__dict__)
