@@ -21,7 +21,7 @@ def get_gigs(request):
 @permission_classes([IsAuthenticated])
 def get_gig(request, id):
     gig = Gig.objects.get(id=id)
-    return Response({'gig': gig.values()})
+    return Response({'gig': model_to_dict(gig)})
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -48,5 +48,29 @@ def create_gig(request):
             'gig': serializer.data,
             'message': 'Gig created successfully'
         }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_gig_live_status(request, id):
+    try:
+        gig = Gig.objects.get(id=id)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    is_live = request.data.get('is_live', None)
+
+    if not isinstance(is_live, bool):
+        return Response({'error': 'Invalid live status'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    serializer = GigSerializer(gig, data={'is_live': not is_live})
+    if serializer.is_valid():
+        serializer.save()
+        create_notification(request.user, 'system', 'Gig live status updated', **gig.__dict__)
+        return Response({
+            'gig': serializer.data,
+            'message': 'Gig live status updated successfully'
+        }, status=status.HTTP_200_OK)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
