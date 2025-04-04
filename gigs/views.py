@@ -42,7 +42,7 @@ def create_gig(request):
     serializer = GigSerializer(data=data)
     if serializer.is_valid():
         gig = serializer.save()
-        # create_notification(request.user, 'Gig created successfully', 'Gig', 'gig', gig.id)
+        create_notification(request.user, 'Gig created successfully', {'name': gig.name, 'description': gig.description, 'startDate': gig.startDate, 'endDate': gig.endDate, 'venue': venue.name})
         return Response({
             'gig': serializer.data,
             'message': 'Gig created successfully'

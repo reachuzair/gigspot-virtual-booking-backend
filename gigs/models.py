@@ -1,5 +1,6 @@
 from django.db import models
 from custom_auth.models import Artist, Venue
+from django.utils import timezone
 
 # Create your models here.
 
@@ -8,6 +9,12 @@ class Gig(models.Model):
     name = models.CharField(max_length=255)
     startDate = models.DateTimeField()
     endDate = models.DateTimeField()
+    eventStartDate = models.DateTimeField(default=timezone.now)
+    
+    def default_event_end_date():
+        return timezone.now() + timezone.timedelta(days=1)
+    
+    eventEndDate = models.DateTimeField(default=default_event_end_date)
     description = models.TextField()
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE)
     max_artist = models.IntegerField()
