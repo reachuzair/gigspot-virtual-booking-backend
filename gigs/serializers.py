@@ -19,6 +19,8 @@ class GigSerializer(serializers.ModelSerializer):
             'name',
             'startDate',
             'endDate',
+            'eventStartDate',
+            'eventEndDate',
             'description',
             'venue',
             'max_artist',

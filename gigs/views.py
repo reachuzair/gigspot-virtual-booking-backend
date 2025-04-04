@@ -20,8 +20,13 @@ def get_gigs(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_gig(request, id):
-    gig = Gig.objects.get(id=id)
-    return Response({'gig': model_to_dict(gig)})
+    try:
+        data = Gig.objects.get(id=id)
+
+        serializer = GigSerializer(data)
+        return Response({'gig': serializer.data})
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
