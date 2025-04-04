@@ -81,12 +81,23 @@ class PerformanceTier(models.TextChoices):
     ROCKSTAR = 'rockstar', 'Rockstar'
     GOLIATH = 'goliath', 'Goliath'
 
+class SubscriptionTier(models.TextChoices):
+    STARTER = 'starter', 'Starter'
+    ESSENTIAL = 'essential', 'Essential'
+    PRO = 'pro', 'Pro'
+    ELITE = 'elite', 'Elite'
+    
+
 class Artist(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     verification_docs = models.FileField(upload_to='artist_verification_docs', blank=True, null=True)
     logo = models.ImageField(upload_to='artist_logo', blank=True, null=True)
+    band_name = models.CharField(max_length=255, blank=True, null=True)
+    band_email = models.EmailField(blank=True, null=True)
+    state = models.CharField(max_length=255, blank=True, null=True)
     performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
+    subscription_tier = models.CharField(max_length=255, choices=SubscriptionTier.choices, default=SubscriptionTier.STARTER)
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
