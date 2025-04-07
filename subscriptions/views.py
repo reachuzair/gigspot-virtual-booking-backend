@@ -18,6 +18,10 @@ def subscription_plans(request):
     serializer = SubscriptionPlanSerializer(plans, many=True)
     return Response(serializer.data)
 
+@api_view(['GET'])
+def payment_methods(request):
+    return Response(stripe.PaymentMethod.list())
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_artist_subscription(request):
@@ -28,7 +32,7 @@ def create_artist_subscription(request):
         # Verify user is an artist
         if not hasattr(user, 'artist'):
             return Response(
-                {'error': 'Only artists can create subscriptions'},
+                {'error': 'Only artists can subscribe for plans.'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -79,10 +83,129 @@ def create_artist_subscription(request):
         subscription = stripe.Subscription.create(
             customer=customer.id,
             items=[{'price': plan.stripe_price_id}],
+            payment_settings={'save_default_payment_method': 'on_subscription'},
+            expand=['latest_invoice'],
+            metadata={'artist_id': artist.id}
+        )
+
+        # Get payment intent separately if needed
+        # latest_invoice = stripe.Invoice.retrieve(
+        #     subscription.latest_invoice.id,
+        #     expand=['payment_intent']
+        # )
+        print(subscription)
+        # Save subscription details
+        ArtistSubscription.objects.create(
+            artist=artist,
+            stripe_customer_id=customer.id,
+            stripe_subscription_id=subscription.id,
+            plan=plan,
+            status=subscription.status,
+            current_period_end=datetime.fromtimestamp(subscription['items']['data'][0]['current_period_end'])
+        )
+        
+        # Update artist's subscription tier
+        artist.subscription_tier = plan.subscription_tier
+        artist.save()
+        
+        return Response({
+            'subscription_id': subscription.id,
+            # 'client_secret': latest_invoice.payment_intent.client_secret if hasattr(latest_invoice, 'payment_intent') else None,
+            'status': subscription.status,
+            'current_period_end': subscription['items']['data'][0]['current_period_end']
+        })
+        
+    except Exception as e:
+        return Response(
+            {'detail': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def test_create_artist_subscription(request):
+    """
+    Test endpoint for creating a subscription directly with card details.
+    (For development/testing only - DO NOT use in production)
+    """
+    user = request.user
+    data = request.data
+
+    try:
+        # Verify user is an artist
+        if not hasattr(user, 'artist'):
+            return Response(
+                {'error': 'Only artists can subscribe for plans.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        artist = user.artist
+        plan_id = data.get('plan_id')
+        card_number = data.get('card_number')
+        card_exp_month = data.get('card_exp_month')
+        card_exp_year = data.get('card_exp_year')
+        card_cvc = data.get('card_cvc')
+
+        # Validate input
+        if not all([plan_id, card_number, card_exp_month, card_exp_year, card_cvc]):
+            return Response(
+                {'error': 'Plan ID and full card details are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the plan
+        try:
+            plan = SubscriptionPlan.objects.get(id=plan_id)
+        except SubscriptionPlan.DoesNotExist:
+            return Response(
+                {'error': 'Invalid subscription plan'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if artist already has a subscription
+        if hasattr(artist, 'subscription'):
+            return Response(
+                {'error': 'Artist already has a subscription'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Step 1: Create a Stripe PaymentMethod
+        payment_method = stripe.PaymentMethod.create(
+            type='card',
+            card={
+                'number': card_number,
+                'exp_month': card_exp_month,
+                'exp_year': card_exp_year,
+                'cvc': card_cvc,
+            },
+        )
+
+        # Step 2: Create/update Stripe Customer
+        customer_data = {
+            'email': user.email,
+            'name': user.name if user.name else user.username,
+            'payment_method': payment_method.id,
+            'invoice_settings': {'default_payment_method': payment_method.id},
+            'metadata': {'artist_id': artist.id}
+        }
+
+        if hasattr(artist, 'subscription') and artist.subscription.stripe_customer_id:
+            customer = stripe.Customer.modify(
+                artist.subscription.stripe_customer_id,
+                **customer_data
+            )
+        else:
+            customer = stripe.Customer.create(**customer_data)
+
+        # Step 3: Create Subscription
+        subscription = stripe.Subscription.create(
+            customer=customer.id,
+            items=[{'price': plan.stripe_price_id}],
             expand=['latest_invoice.payment_intent'],
             metadata={'artist_id': artist.id}
         )
-        
+
         # Save subscription details
         ArtistSubscription.objects.create(
             artist=artist,
@@ -92,18 +215,19 @@ def create_artist_subscription(request):
             status=subscription.status,
             current_period_end=datetime.fromtimestamp(subscription.current_period_end)
         )
-        
+
         # Update artist's subscription tier
         artist.subscription_tier = plan.subscription_tier
         artist.save()
-        
+
         return Response({
             'subscription_id': subscription.id,
             'client_secret': subscription.latest_invoice.payment_intent.client_secret,
             'status': subscription.status,
-            'current_period_end': subscription.current_period_end
+            'current_period_end': subscription.current_period_end,
+            'payment_method_id': payment_method.id  # For debugging
         })
-        
+
     except Exception as e:
         return Response(
             {'error': str(e)},
