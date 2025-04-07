@@ -3,11 +3,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Gig, SeatRow
+from .models import Gig, SeatRow, Seat
 from custom_auth.models import Venue, ROLE_CHOICES
 from rt_notifications.utils import create_notification
 from django.forms.models import model_to_dict
-from .serializers import GigSerializer, SeatRowSerializer
+from .serializers import GigSerializer, SeatRowSerializer, SeatSerializer
 
 # Create your views here.
 
@@ -156,3 +156,90 @@ def get_gig_rows(request, gig_id):
     
     seat_rows = SeatRow.objects.filter(gig=gig)
     return Response({'seat_rows': list(seat_rows.values())})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_seats(request, gig_id, row_id):
+    user = request.user
+    if user.role != ROLE_CHOICES.VENUE:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        venue = Venue.objects.select_related('user').get(user=user)
+    except Venue.DoesNotExist:
+        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        gig = Gig.objects.get(id=gig_id, venue=venue)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        seat_row = SeatRow.objects.get(id=row_id, gig=gig)
+    except SeatRow.DoesNotExist:
+        return Response({'error': 'Seat row not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    data = request.data.copy()
+    action = data.get('action', None)
+    
+    if action == 'add_single':
+        data['row'] = seat_row.id
+        data['name'] = f'{seat_row.name}{len(Seat.objects.filter(row=seat_row)) + 1}'
+        data['gig'] = gig.id
+        
+        serializer = SeatSerializer(data=data)
+        if serializer.is_valid():
+            seat = serializer.save()
+            create_notification(request.user, 'system', 'Seat created successfully', **seat.__dict__)
+            return Response({
+                'seat': serializer.data,
+                'message': 'Seat added successfully'
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif action == 'add_multiple':
+        count = data.get('count', None)
+        price = data.get('price', None)
+        
+        if not isinstance(count, int) or count <= 0:
+            return Response({'error': 'Invalid count'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not price:
+            return Response({'error': 'Invalid price'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        seats = []
+        prev_seats = Seat.objects.filter(row=seat_row)
+        for i in range(count):
+            seat_data = {
+                'row': seat_row,
+                'name': f'{seat_row.name}{len(prev_seats) + i + 1}',
+                'price': float(price),
+                'gig': gig
+            }
+            seats.append(Seat(**seat_data))
+        
+        Seat.objects.bulk_create(seats)
+        create_notification(request.user, 'system', 'Seats created successfully', **seats[0].__dict__)
+        
+        # Serialize the seats using SeatSerializer
+        serialized_seats = SeatSerializer(seats, many=True).data
+        return Response({
+            'seats': serialized_seats,
+            'message': 'Seats added successfully'
+        }, status=status.HTTP_201_CREATED)
+    
+    else:
+        return Response({'detail': 'Invalid or No action provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_seats(request, gig_id, row_id):
+    try:
+        seat_row = SeatRow.objects.get(id=row_id)
+    except SeatRow.DoesNotExist:
+        return Response({'detail': 'Seat row not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    seats = Seat.objects.filter(row=seat_row)
+    return Response({'seats': list(seats.values())})

@@ -1,5 +1,14 @@
 from django.urls import path
-from .views import get_gigs, get_gig, create_gig, update_gig, update_gig_live_status, get_gig_rows, add_seat_row
+from .views import (
+    get_gigs, 
+    get_gig, 
+    create_gig, 
+    update_gig, 
+    update_gig_live_status, 
+    get_gig_rows, 
+    add_seat_row, 
+    get_seats, 
+    add_seats)
 
 urlpatterns = [
     path('', get_gigs, name='get_gigs'),
@@ -7,6 +16,8 @@ urlpatterns = [
     path('create/', create_gig, name='create_gig'),
     path('update/<int:id>/', update_gig, name='update_gig'),
     path('update-live-status/<int:id>/', update_gig_live_status, name='update_gig_live_status'),
-    path('list-gig-rows/<int:gig_id>/', get_gig_rows, name='get_gig_rows'),
-    path('add-gig-row/<int:gig_id>/', add_seat_row, name='add_seat_row')
+    path('<int:gig_id>/list-gig-rows/', get_gig_rows, name='get_gig_rows'),
+    path('<int:gig_id>/add-gig-row/', add_seat_row, name='add_seat_row'),
+    path('<int:gig_id>/list-seats-by-row/<int:row_id>/', get_seats, name='get_seats'),
+    path('<int:gig_id>/add-seats-by-row/<int:row_id>/', add_seats, name='add_seats')
 ]
