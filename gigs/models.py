@@ -33,7 +33,7 @@ class Gig(models.Model):
 
 class SeatRow(models.Model):
     id = models.AutoField(primary_key=True)
-    gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
+    gig = models.ForeignKey('Gig', on_delete=models.CASCADE, related_name='rows')
     name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -41,6 +41,7 @@ class SeatRow(models.Model):
 class Seat(models.Model):
     id = models.AutoField(primary_key=True)
     gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
+    row = models.ForeignKey('SeatRow', on_delete=models.CASCADE, related_name='seats', null=True, blank=True, default=None)
     name = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
