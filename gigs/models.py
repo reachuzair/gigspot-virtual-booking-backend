@@ -31,6 +31,13 @@ class Gig(models.Model):
         verbose_name = 'Gig'
         verbose_name_plural = 'Gigs'
 
+class SeatRow(models.Model):
+    id = models.AutoField(primary_key=True)
+    gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
 class Seat(models.Model):
     id = models.AutoField(primary_key=True)
     gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
