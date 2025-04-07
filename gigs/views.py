@@ -3,11 +3,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Gig
+from .models import Gig, SeatRow
 from custom_auth.models import Venue, ROLE_CHOICES
 from rt_notifications.utils import create_notification
 from django.forms.models import model_to_dict
-from .serializers import GigSerializer
+from .serializers import GigSerializer, SeatRowSerializer
 
 # Create your views here.
 
@@ -112,3 +112,47 @@ def update_gig(request, id):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_seat_row(request, gig_id):
+    
+    user = request.user
+    if user.role != ROLE_CHOICES.VENUE:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    
+    try:
+        venue = Venue.objects.select_related('user').get(user=user)
+    except Venue.DoesNotExist:
+        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        gig = Gig.objects.get(id=gig_id, venue=venue)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    data = request.data.copy()
+    data['gig'] = gig.id
+    
+    serializer = SeatRowSerializer(data=data)
+    if serializer.is_valid():
+        seat_row = serializer.save()
+        create_notification(request.user, 'system', 'Seat row created successfully', **seat_row.__dict__)
+        return Response({
+            'seat_row': serializer.data,
+            'message': 'Seat row created successfully'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_gig_rows(request, gig_id):
+    try:
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    seat_rows = SeatRow.objects.filter(gig=gig)
+    return Response({'seat_rows': list(seat_rows.values())})
