@@ -26,7 +26,7 @@ def get_gig(request, id):
         serializer = GigSerializer(data)
         return Response({'gig': serializer.data})
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -34,12 +34,12 @@ def create_gig(request):
     user = request.user
     
     if user.role != ROLE_CHOICES.VENUE:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     try:
         venue = Venue.objects.select_related('user').get(user=user)
     except Venue.DoesNotExist:
-        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
     data['venue'] = {'id': venue.id}
@@ -62,12 +62,12 @@ def update_gig_live_status(request, id):
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     is_live = request.data.get('is_live', None)
 
     if not isinstance(is_live, bool):
-        return Response({'error': 'Invalid live status'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Invalid live status'}, status=status.HTTP_400_BAD_REQUEST)
     
     serializer = GigSerializer(gig, data={'is_live': is_live})
     if serializer.is_valid():
@@ -86,17 +86,17 @@ def update_gig(request, id):
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     key = request.data.get('key', None)
     value = request.data.get('value', None)
 
     if not key or not value:
-        return Response({'error': 'Invalid key or value'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Invalid key or value'}, status=status.HTTP_400_BAD_REQUEST)
 
     allowed_keys = ['name', 'description', 'startDate', 'endDate', 'eventStartDate', 'eventEndDate', 'max_artist', 'flyer_text']
     if key not in allowed_keys:
-        return Response({'error': 'Invalid key'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Invalid key'}, status=status.HTTP_400_BAD_REQUEST)
     
     if key == 'is_live':
         return update_gig_live_status(request, id)
@@ -119,18 +119,18 @@ def add_seat_row(request, gig_id):
     
     user = request.user
     if user.role != ROLE_CHOICES.VENUE:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     
     try:
         venue = Venue.objects.select_related('user').get(user=user)
     except Venue.DoesNotExist:
-        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
         gig = Gig.objects.get(id=gig_id, venue=venue)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
     data['gig'] = gig.id
@@ -152,33 +152,59 @@ def get_gig_rows(request, gig_id):
     try:
         gig = Gig.objects.get(id=gig_id)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     seat_rows = SeatRow.objects.filter(gig=gig)
     return Response({'seat_rows': list(seat_rows.values())})
 
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_seat_row(request, row_id, gig_id):
+    user = request.user
+    if user.role != ROLE_CHOICES.VENUE:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        venue = Venue.objects.select_related('user').get(user=user)
+    except Venue.DoesNotExist:
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        gig = Gig.objects.get(id=gig_id, venue=venue)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        seat_row = SeatRow.objects.get(id=row_id, gig=gig)
+    except SeatRow.DoesNotExist:
+        return Response({'detail': 'Seat row not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    seat_row.delete()
+    create_notification(request.user, 'system', 'Seat row deleted successfully', **seat_row.__dict__)
+    return Response({'message': 'Seat row deleted successfully'}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_seats(request, gig_id, row_id):
     user = request.user
     if user.role != ROLE_CHOICES.VENUE:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     try:
         venue = Venue.objects.select_related('user').get(user=user)
     except Venue.DoesNotExist:
-        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
         gig = Gig.objects.get(id=gig_id, venue=venue)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
         seat_row = SeatRow.objects.get(id=row_id, gig=gig)
     except SeatRow.DoesNotExist:
-        return Response({'error': 'Seat row not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Seat row not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
     action = data.get('action', None)
@@ -204,10 +230,10 @@ def add_seats(request, gig_id, row_id):
         price = data.get('price', None)
         
         if not isinstance(count, int) or count <= 0:
-            return Response({'error': 'Invalid count'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Invalid count'}, status=status.HTTP_400_BAD_REQUEST)
         
         if not price:
-            return Response({'error': 'Invalid price'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Invalid price'}, status=status.HTTP_400_BAD_REQUEST)
         
         seats = []
         prev_seats = Seat.objects.filter(row=seat_row)
@@ -246,28 +272,24 @@ def get_seats(request, gig_id, row_id):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
-def delete_seat(request):
+def delete_seat(request, gig_id):
     user =request.user
     if user.role != ROLE_CHOICES.VENUE:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     try:
         venue = Venue.objects.select_related('user').get(user=user)
     except Venue.DoesNotExist:
-        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    gig_id = request.data.get('gig_id', None)
-    if not gig_id:
-        return Response({'error': 'Invalid gig ID'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
         gig = Gig.objects.get(id=gig_id, venue=venue)
     except Gig.DoesNotExist:
-        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     seat_id_list = request.data.get('seat_id_list', None)
     if not seat_id_list:
-        return Response({'error': 'Invalid seat ID'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'Invalid seat ID'}, status=status.HTTP_400_BAD_REQUEST)
     
     seats = []
     for seat_id in seat_id_list:
@@ -275,7 +297,7 @@ def delete_seat(request):
             seat = Seat.objects.get(id=seat_id, gig=gig)
             seats.append(seat)
         except Seat.DoesNotExist:
-            return Response({'error': 'Seat not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'Seat not found'}, status=status.HTTP_404_NOT_FOUND)
         
         seat.delete()
     
