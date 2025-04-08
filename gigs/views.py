@@ -243,3 +243,41 @@ def get_seats(request, gig_id, row_id):
     
     seats = Seat.objects.filter(row=seat_row)
     return Response({'seats': list(seats.values())})
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_seat(request):
+    user =request.user
+    if user.role != ROLE_CHOICES.VENUE:
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        venue = Venue.objects.select_related('user').get(user=user)
+    except Venue.DoesNotExist:
+        return Response({'error': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    gig_id = request.data.get('gig_id', None)
+    if not gig_id:
+        return Response({'error': 'Invalid gig ID'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        gig = Gig.objects.get(id=gig_id, venue=venue)
+    except Gig.DoesNotExist:
+        return Response({'error': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    seat_id_list = request.data.get('seat_id_list', None)
+    if not seat_id_list:
+        return Response({'error': 'Invalid seat ID'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    seats = []
+    for seat_id in seat_id_list:
+        try:
+            seat = Seat.objects.get(id=seat_id, gig=gig)
+            seats.append(seat)
+        except Seat.DoesNotExist:
+            return Response({'error': 'Seat not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        seat.delete()
+    
+    create_notification(request.user, 'system', 'Seats deleted successfully', **seats[0].__dict__)
+    return Response({'message': 'Seats deleted successfully'}, status=status.HTTP_200_OK)

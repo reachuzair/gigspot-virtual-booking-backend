@@ -8,7 +8,9 @@ from .views import (
     get_gig_rows, 
     add_seat_row, 
     get_seats, 
-    add_seats)
+    add_seats,
+    delete_seat
+    )
 
 urlpatterns = [
     path('', get_gigs, name='get_gigs'),
@@ -19,5 +21,6 @@ urlpatterns = [
     path('<int:gig_id>/list-gig-rows/', get_gig_rows, name='get_gig_rows'),
     path('<int:gig_id>/add-gig-row/', add_seat_row, name='add_seat_row'),
     path('<int:gig_id>/list-seats-by-row/<int:row_id>/', get_seats, name='get_seats'),
-    path('<int:gig_id>/add-seats-by-row/<int:row_id>/', add_seats, name='add_seats')
+    path('<int:gig_id>/add-seats-by-row/<int:row_id>/', add_seats, name='add_seats'),
+    path('delete-seats/', delete_seat, name='delete_seat')
 ]
