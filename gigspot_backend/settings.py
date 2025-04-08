@@ -50,7 +50,8 @@ INSTALLED_APPS = [
     'rt_notifications',
     'users',
     'gigs',
-    'subscriptions'
+    'subscriptions',
+    'services'
 ]
 
 REST_FRAMEWORK = {
