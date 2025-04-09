@@ -15,18 +15,16 @@ class SoundsChartAPI:
     
     def search_artist_by_name(self, artist_name, limit=10, offset=0):
         """Search for an artist by name using v2.0 API"""
-        endpoint = f"{self.BASE_URL}/artist/search/{artist_name}"
+        endpoint = f"{self.BASE_URL}/artist/search/{quote(artist_name)}"
         
         headers = {
-            'X-APP-ID': self.app_id,
-            'X-API-KEY': self.api_key,
-            'Accept': 'application/json'
+            'x-app-id': self.app_id,
+            'x-api-key': self.api_key
         }
         
         params = {
-            'limit': limit,
-            'offset': offset
-            # Add other parameters as needed
+            'offset': offset,
+            'limit': limit
         }
         
         try:
