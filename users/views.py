@@ -153,3 +153,27 @@ def delete_user(request):
         return Response({"detail": "User deleted successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_artist_soundcharts_uuid(request):
+    try:
+        user = request.user
+        soundcharts_uuid = request.data.get('soundcharts_uuid')
+        
+        if not soundcharts_uuid:
+            return Response({"detail": "Soundcharts UUID is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Check if user has an artist role
+        if user.role != 'artist':
+            return Response({"detail": "User is not an artist"}, status=status.HTTP_403_FORBIDDEN)
+            
+        # Get or create artist record
+        artist, created = Artist.objects.get_or_create(user=user)
+        
+        artist.soundcharts_uuid = soundcharts_uuid
+        artist.save()
+        
+        return Response({"detail": "Soundcharts UUID updated successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)

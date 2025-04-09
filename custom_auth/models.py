@@ -100,7 +100,7 @@ class Artist(models.Model):
     subscription_tier = models.CharField(max_length=255, choices=SubscriptionTier.choices, default=SubscriptionTier.STARTER)
     shows_created = models.PositiveIntegerField(default=0)
     active_collaborations = models.ManyToManyField('self', symmetrical=False)
-    soundschart_uuid = models.CharField(max_length=255, blank=True, null=True, default=None)
+    soundcharts_uuid = models.CharField(max_length=255, blank=True, null=True, default=None)
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
