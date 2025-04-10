@@ -17,6 +17,7 @@ class Gig(models.Model):
     eventEndDate = models.DateTimeField(default=default_event_end_date)
     description = models.TextField()
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE)
+    is_public = models.BooleanField(default=True)
     max_artist = models.IntegerField()
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
     flyer_text = models.CharField(max_length=255, blank=True, null=True)
