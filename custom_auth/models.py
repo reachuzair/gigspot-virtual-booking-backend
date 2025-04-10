@@ -53,6 +53,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_deleted = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)  # Required for Django admin
     is_active = models.BooleanField(default=True)  # Required for Django admin
+    contract_pin = models.CharField(max_length=255, blank=True, null=True, default="")
+    contract_pin_expires_in = models.DateTimeField(blank=True, null=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
