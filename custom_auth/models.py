@@ -74,6 +74,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()  # Save the user instance to persist changes
         return otp
 
+    def gen_contract_pin(self):
+        """Generate a 6-digit numeric Contract Pin and save it with an expiry date."""
+        contract_pin = random.randint(100000, 999999)  # Generate a random number between 100000 and 999999
+        self.contract_pin = contract_pin  # Save OTP to contract_pin field
+        self.contract_pin_expires_in = timezone.now() + timedelta(minutes=60)  # Set expiry to 60 minutes from now
+        self.save()  # Save the user instance to persist changes
+        return contract_pin
+
 class PerformanceTier(models.TextChoices):
     FRESH_TALENT = 'fresh_talent', 'Fresh Talent'
     NEW_BLOOD = 'new_blood', 'New Blood'

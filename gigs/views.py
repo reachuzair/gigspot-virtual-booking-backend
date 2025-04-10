@@ -6,6 +6,7 @@ from rest_framework import status
 from .models import Gig, SeatRow, Seat
 from custom_auth.models import Venue, ROLE_CHOICES
 from rt_notifications.utils import create_notification
+from utils.email import send_templated_email
 from django.forms.models import model_to_dict
 from .serializers import GigSerializer, SeatRowSerializer, SeatSerializer
 
@@ -303,3 +304,24 @@ def delete_seat(request, gig_id):
     
     create_notification(request.user, 'system', 'Seats deleted successfully', **seats[0].__dict__)
     return Response({'message': 'Seats deleted successfully'}, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_contract_pin(request):
+    user = request.user
+    contract_pin = user.gen_contract_pin()
+
+    context = {
+        'message': 'Contract Pin generated successfully',
+        'contract_pin': contract_pin
+    }
+    create_notification(request.user, 'system', 'Contract Pin generated successfully', **user.__dict__)
+    
+    send_templated_email(
+        subject='Contract Pin Generated',
+        recipient_list=[user.email],
+        template_name='contract_pin',
+        context=context
+    )
+    
+    return Response({'contract_pin': contract_pin}, status=status.HTTP_200_OK)
