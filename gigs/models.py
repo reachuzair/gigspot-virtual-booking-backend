@@ -16,7 +16,7 @@ class Gig(models.Model):
     
     eventEndDate = models.DateTimeField(default=default_event_end_date)
     description = models.TextField()
-    venue = models.ForeignKey(Venue, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
     is_public = models.BooleanField(default=True)
     max_artist = models.IntegerField()
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
@@ -58,7 +58,8 @@ class Seat(models.Model):
 class Contract(models.Model):
     id = models.AutoField(primary_key=True)
     gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
-    artist = models.ForeignKey(Artist, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contracts_as_user', default=None, null=True, blank=True)
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contracts_as_recipient', default=None, null=True, blank=True)
     image = models.ImageField(upload_to='gigs/contracts/', blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -87,4 +88,3 @@ class Application(models.Model):
     class Meta:
         verbose_name = 'Application'
         verbose_name_plural = 'Applications'
-

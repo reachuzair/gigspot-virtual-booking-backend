@@ -3,12 +3,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Gig, SeatRow, Seat
-from custom_auth.models import Venue, ROLE_CHOICES
+from .models import Gig, SeatRow, Seat, Contract
+from custom_auth.models import Venue, ROLE_CHOICES, Artist, User
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
 from django.forms.models import model_to_dict
 from .serializers import GigSerializer, SeatRowSerializer, SeatSerializer
+from PIL import Image, ImageDraw, ImageFont
+import io
 
 # Create your views here.
 
@@ -307,6 +309,159 @@ def delete_seat(request, gig_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def generate_contract_by_artist(request):
+    user = request.user
+    recipient = request.data.get('recipient', None)
+    
+    if not recipient:
+        return Response({'detail': 'Recipient is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        recipient_user = User.objects.get(email=recipient)
+    except User.DoesNotExist:
+        return Response({'detail': 'Recipient user not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if recipient_user.role != ROLE_CHOICES.VENUE:
+        return Response({'detail': 'Recipient must be a venue'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    gig_id = request.data.get('gig_id', None)
+    if not gig_id:
+        return Response({'detail': 'Gig ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        # Create a new contract (adjust fields as needed)
+        contract = Contract.objects.create(
+            user=user,  # assuming user has an artist profile
+            recipient=recipient_user,  # assuming recipient has a venue profile
+            gig=gig,
+            price=request.data.get('price', 0.00)
+        )
+        
+        # Generate contract image
+        image = Image.new('RGB', (800, 1000), color=(255, 255, 255))
+        draw = ImageDraw.Draw(image)
+        
+        # Load a font (you'll need to have the font file or use default)
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            font = ImageFont.load_default()
+        
+        # Add contract content
+        draw.text((50, 50), "CONTRACT AGREEMENT", font=font, fill=(0, 0, 0))
+        draw.text((50, 100), f"Artist: {user.name}", font=font, fill=(0, 0, 0))
+        draw.text((50, 130), f"Venue: {recipient_user.name}", font=font, fill=(0, 0, 0))
+        draw.text((50, 160), f"Price: ${contract.price}", font=font, fill=(0, 0, 0))
+        draw.text((50, 190), f"Date: {contract.created_at.date()}", font=font, fill=(0, 0, 0))
+        
+        # Add terms and conditions
+        terms = [
+            "Terms and Conditions:",
+            "1. The artist agrees to perform the services as described.",
+            "2. The recipient agrees to pay the agreed amount.",
+            "3. Any changes must be agreed upon by both parties.",
+            "4. This contract is legally binding."
+        ]
+        
+        y_position = 250
+        for term in terms:
+            draw.text((50, y_position), term, font=font, fill=(0, 0, 0))
+            y_position += 30
+        
+        # Add signatures placeholder
+        draw.text((50, 450), "Artist Signature: ________________________", font=font, fill=(0, 0, 0))
+        draw.text((50, 500), "Venue Signature: ________________________", font=font, fill=(0, 0, 0))
+        
+        # Save the image to the contract
+        image_io = io.BytesIO()
+        image.save(image_io, format='PNG')
+        
+        # Save to model (you might need to adjust this depending on your model)
+        contract.image.save(f'contract_{contract.id}.png', image_io)
+        contract.save()
+        
+        # Return the image as response
+        image_io.seek(0)
+        return Response({'image_url': contract.image}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_contract_by_venue(request):
+    user = request.user
+    recipient = request.data.get('recipient', None)
+    
+    if not recipient:
+        return Response({'detail': 'Invalid recipient'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Create a new contract (adjust fields as needed)
+        contract = Contract.objects.create(
+            artist=user.artist,  # assuming user has an artist profile
+            gig_id=request.data.get('gig_id'),  # assuming you pass gig_id in request
+            price=request.data.get('price', 0.00)
+        )
+        
+        # Generate contract image
+        image = Image.new('RGB', (800, 1000), color=(255, 255, 255))
+        draw = ImageDraw.Draw(image)
+        
+        # Load a font (you'll need to have the font file or use default)
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            font = ImageFont.load_default()
+        
+        # Add contract content
+        draw.text((50, 50), "CONTRACT AGREEMENT", font=font, fill=(0, 0, 0))
+        draw.text((50, 100), f"Venue: {user.get_full_name()}", font=font, fill=(0, 0, 0))
+        draw.text((50, 130), f"Artist: {recipient}", font=font, fill=(0, 0, 0))
+        draw.text((50, 160), f"Price: ${contract.price}", font=font, fill=(0, 0, 0))
+        draw.text((50, 190), f"Date: {contract.created_at.date()}", font=font, fill=(0, 0, 0))
+        
+        # Add terms and conditions
+        terms = [
+            "Terms and Conditions:",
+            "1. The artist agrees to perform the services as described.",
+            "2. The recipient agrees to pay the agreed amount.",
+            "3. Any changes must be agreed upon by both parties.",
+            "4. This contract is legally binding."
+        ]
+        
+        y_position = 250
+        for term in terms:
+            draw.text((50, y_position), term, font=font, fill=(0, 0, 0))
+            y_position += 30
+        
+        # Add signatures placeholder
+        draw.text((50, 450), "Venue Signature: ________________________", font=font, fill=(0, 0, 0))
+        draw.text((50, 500), "Artist Signature: ________________________", font=font, fill=(0, 0, 0))
+        
+        # Save the image to the contract
+        image_io = io.BytesIO()
+        image.save(image_io, format='PNG')
+        
+        # Save to model (you might need to adjust this depending on your model)
+        contract.image.save(f'contract_{contract.id}.png', image_io)
+        contract.save()
+        
+        # Return the image as response
+        image_io.seek(0)
+        return Response({'image_url': contract.image}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def generate_contract_pin(request):
     user = request.user
     contract_pin = user.gen_contract_pin()
@@ -315,7 +470,6 @@ def generate_contract_pin(request):
         'message': 'Contract Pin generated successfully',
         'contract_pin': contract_pin
     }
-    create_notification(request.user, 'system', 'Contract Pin generated successfully', **user.__dict__)
     
     send_templated_email(
         subject='Contract Pin Generated',

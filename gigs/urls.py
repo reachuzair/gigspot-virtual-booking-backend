@@ -11,7 +11,9 @@ from .views import (
     add_seats,
     delete_seat,
     delete_seat_row,
-    generate_contract_pin
+    generate_contract_pin,
+    generate_contract_by_artist,
+    generate_contract_by_venue
     )
 
 urlpatterns = [
@@ -26,5 +28,7 @@ urlpatterns = [
     path('<int:gig_id>/add-seats-by-row/<int:row_id>/', add_seats, name='add_seats'),
     path('<int:gig_id>/delete-seats/', delete_seat, name='delete_seat'),
     path('<int:gig_id>/delete-row/<int:row_id>/', delete_seat_row, name='delete_seats_by_row'),
-    path('generate-contract-pin/', generate_contract_pin, name='generate_contract_pin')
+    path('generate-contract-pin/', generate_contract_pin, name='generate_contract_pin'),
+    path('generate-contract-by-artist/', generate_contract_by_artist, name='generate_contract_by_artist'),
+    path('generate-contract-by-venue/', generate_contract_by_venue, name='generate_contract_by_venue')
 ]
