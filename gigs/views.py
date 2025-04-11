@@ -476,7 +476,7 @@ def generate_contract(request):
         
         # Return the PDF as response
         pdf_buffer.seek(0)
-        return Response({'pdf_url': contract.pdf.url}, status=status.HTTP_200_OK)
+        return Response({'contract': {'id': contract.id,'artist': artist.user.name, 'venue': venue.user.name, 'gig': gig.name, 'price': contract.price, 'pdf_url': contract.pdf.url, 'image_url': contract.image.url}}, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
