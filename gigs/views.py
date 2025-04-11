@@ -481,6 +481,27 @@ def generate_contract(request):
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_contract(request, contract_id):
+    user = request.user
+    
+    if user.role == ROLE_CHOICES.VENUE:
+        try:
+            venue = Venue.objects.get(user=user)
+            contract = Contract.objects.get(id=contract_id, venue=venue)
+        except Contract.DoesNotExist:
+            return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
+    elif user.role == ROLE_CHOICES.ARTIST:
+        try:
+            artist = Artist.objects.get(user=user)
+            contract = Contract.objects.get(id=contract_id, artist=artist)
+        except Contract.DoesNotExist:
+            return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    return Response({'contract': contract})
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def sign_contract(request, contract_id):
