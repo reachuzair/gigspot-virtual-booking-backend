@@ -58,8 +58,11 @@ class Seat(models.Model):
 class Contract(models.Model):
     id = models.AutoField(primary_key=True)
     gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contracts_as_user', default=None, null=True, blank=True)
-    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contracts_as_recipient', default=None, null=True, blank=True)
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='contracts', default=None, null=True, blank=True)
+    venue_signed = models.BooleanField(default=False)
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='contracts', default=None, null=True, blank=True)
+    artist_signed = models.BooleanField(default=False)
+    pdf = models.FileField(upload_to='gigs/contracts/', blank=True, null=True)
     image = models.ImageField(upload_to='gigs/contracts/', blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
