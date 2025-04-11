@@ -8,7 +8,7 @@ from custom_auth.models import Venue, ROLE_CHOICES, Artist, User
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
 from django.forms.models import model_to_dict
-from .serializers import GigSerializer, SeatRowSerializer, SeatSerializer
+from .serializers import GigSerializer, SeatRowSerializer, SeatSerializer, ContractSerializer
 from PIL import Image, ImageDraw, ImageFont
 import io
 from reportlab.pdfgen import canvas
@@ -500,7 +500,9 @@ def get_contract(request, contract_id):
             return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
     else:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    return Response({'contract': contract})
+
+    serializer = ContractSerializer(contract)
+    return Response({'contract': serializer.data})
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])

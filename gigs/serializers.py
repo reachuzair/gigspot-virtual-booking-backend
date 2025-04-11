@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Gig, SeatRow, Seat
+from .models import Gig, SeatRow, Seat, Contract
 from custom_auth.models import Venue
 from django.core.files.storage import default_storage
 
@@ -58,3 +58,8 @@ class SeatSerializer(serializers.ModelSerializer):
     class Meta:
         model = Seat
         fields = ['id', 'gig', 'row', 'name', 'price', 'created_at', 'updated_at']
+
+class ContractSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contract
+        fields = ['id', 'artist', 'venue', 'gig', 'price', 'pdf', 'image', 'created_at', 'updated_at']
