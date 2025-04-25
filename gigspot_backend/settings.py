@@ -30,7 +30,14 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-g8=z0v@=7iefqblfjn^2=vn_4g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '16.171.237.96', '0.0.0.0', '172.31.31.43']
+ALLOWED_HOSTS = [
+    'localhost', 
+    '127.0.0.1', 
+    '16.171.237.96', 
+    '0.0.0.0', 
+    '172.31.31.43', 
+    'app.gigspotvb.com'
+]
 
 AUTH_USER_MODEL = 'custom_auth.User'
 # Application definition
