@@ -35,6 +35,11 @@ def signup_view(request):
                     user=user,
                 )
             
+            try:
+                create_notification(user, 'system', 'Welcome!', description=f'Your {role} account was created successfully.')
+            except Exception as notify_exc:
+                # Log or print the error if needed, but do not fail signup
+                print(f"Notification error: {notify_exc}")
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
