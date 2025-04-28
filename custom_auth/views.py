@@ -114,7 +114,13 @@ def login_view(request):
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         login(request, user)
-        create_notification(user, 'system', 'Recent Activity', description='You have successfully logged in.')
+        
+        try:
+            create_notification(user, 'system', 'Recent Activity', description='You have successfully logged in.')
+        except Exception as notify_exc:
+            # Log or print the error if needed, but do not fail login
+            print(f"Notification error: {notify_exc}")
+        
         return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
