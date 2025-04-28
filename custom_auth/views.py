@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import login, logout
 from .models import User, Artist, Venue, Fan, ROLE_CHOICES
-from .serializers import UserCreateSerializer
+from .serializers import UserCreateSerializer, UserSerializer
 from utils.email import send_templated_email
 from django.utils import timezone
 from rt_notifications.utils import create_notification
@@ -121,7 +121,7 @@ def login_view(request):
             # Log or print the error if needed, but do not fail login
             print(f"Notification error: {notify_exc}")
         
-        return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
+        return Response({"detail": "Login successful", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

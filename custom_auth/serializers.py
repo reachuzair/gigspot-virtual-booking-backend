@@ -40,3 +40,20 @@ class UserCreateSerializer(serializers.ModelSerializer):
         send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
 
         return user
+
+from .models import User
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'username',
+            'name',
+            'role',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]
+    
