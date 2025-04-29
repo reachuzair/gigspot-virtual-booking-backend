@@ -2,9 +2,12 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
+# Configure Django settings if not already configured
+if not settings.configured:
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gigspot_backend.settings')
+
 class NotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        from .models import Notification
         if self.scope["user"].is_anonymous:
             await self.close()
         else:

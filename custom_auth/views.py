@@ -8,7 +8,6 @@ from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer, UserSerializer
 from utils.email import send_templated_email
 from django.utils import timezone
-from rt_notifications.utils import create_notification
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -110,10 +109,6 @@ def login_view(request):
         login(request, user)
         
         try:
-            create_notification(user, 'system', 'Recent Activity', description='You have successfully logged in.')
-        except Exception as notify_exc:
-            # Log or print the error if needed, but do not fail login
-            print(f"Notification error: {notify_exc}")
         
         return Response({"detail": "Login successful", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
     except Exception as e:
