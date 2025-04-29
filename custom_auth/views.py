@@ -21,18 +21,19 @@ def signup_view(request):
             # Handle role-specific profile creation
             role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
             
-            if role == ROLE_CHOICES.ARTIST:
-                Artist.objects.create(
-                    user=user,
-                )
-            elif role == ROLE_CHOICES.VENUE:
-                Venue.objects.create(
-                    user=user,
-                )
-            elif role == ROLE_CHOICES.FAN:  
-                Fan.objects.create(
-                    user=user,
-                )
+            # if role == ROLE_CHOICES.ARTIST:
+            #     Artist.objects.create(
+            #         user=user,
+            #     )
+            # elif role == ROLE_CHOICES.VENUE:
+            #     Venue.objects.create(
+            #         user=user,
+            #     )
+            # elif role == ROLE_CHOICES.FAN:  
+            #     Fan.objects.create(
+            #         user=user,
+            #     )
+            user.delete()
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
