@@ -129,3 +129,19 @@ def logout_view(request):
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    email = request.query_params.get('email')
+
+    user = User.objects.filter(email=email).first()
+    if not user:
+        return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    otp = user.gen_otp()
+    send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
+    
+    return Response({"detail": "OTP sent successfully"}, status=status.HTTP_200_OK)
+    
+
+
