@@ -6,16 +6,16 @@ from django.utils.text import slugify
 import random
 
 class UserManager(BaseUserManager):
-    def create_user(self, username, email, password=None, **extra_fields):
+    def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
-        user = self.model(username=username, email=email, **extra_fields)
+        user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, username, email, password=None, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
 
@@ -24,7 +24,7 @@ class UserManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
 
-        return self.create_user(username, email, password, **extra_fields)
+        return self.create_user(email, password, **extra_fields)
 
 class ROLE_CHOICES(models.TextChoices):
     ARTIST = 'artist', 'Artist'
@@ -41,7 +41,6 @@ def user_profile_image_path(instance, filename):
 
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.AutoField(primary_key=True)
-    username = models.CharField(max_length=255, unique=True)
     name = models.CharField(max_length=255, default="")
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=255, choices=ROLE_CHOICES.choices, default=ROLE_CHOICES.FAN)
@@ -61,10 +60,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = 'email'  # Use email as the unique identifier for authentication
-    REQUIRED_FIELDS = ['username']  # Fields required when creating a user via createsuperuser
+    REQUIRED_FIELDS = ['name']  # Fields required when creating a user via createsuperuser
 
     def __str__(self):
-        return self.username
+        return self.email
     
     def gen_otp(self):
         """Generate a 6-digit numeric OTP and save it with an expiry date."""
@@ -117,7 +116,7 @@ class Artist(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f'{self.first_name} {self.last_name}'
+        return f'{self.user.name}'
 
     def can_invite(self, target_tier):
         INVITATION_RULES = {
@@ -141,7 +140,7 @@ class Venue(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.name
+        return f'{self.user.name}'
 
 class Fan(models.Model):
     id = models.AutoField(primary_key=True)
@@ -150,6 +149,6 @@ class Fan(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f'{self.first_name} {self.last_name}'
+        return f'{self.user.name}'
 
 
