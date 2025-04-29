@@ -5,7 +5,9 @@ from .views import (
     resend_otp, 
     login_view, 
     logout_view, 
-    forgot_password)
+    forgot_password,
+    change_password
+    )
 
 urlpatterns = [
     path('signup/', signup, name='signup'),
@@ -13,5 +15,6 @@ urlpatterns = [
     path('resend-otp/<str:email>/', resend_otp, name='resend_otp'),
     path('login/', login_view, name='login'),
     path('logout/', logout_view, name='logout'),
-    path('forgot-password/', forgot_password, name='forgot_password'),
+    path('forgot-password/', forgot_password, name='forgot_password'),  # Forgot password
+    path('change-password/', change_password, name='change_password'),  # Change password
 ]
