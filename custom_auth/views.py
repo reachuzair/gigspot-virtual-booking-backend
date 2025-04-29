@@ -43,6 +43,41 @@ def signup_view(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def signup(request):
+    try:
+        serializer = UserCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            # Create the base user
+            user = serializer.save()
+        
+            # Handle role-specific profile creation
+            role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
+            
+            if role == ROLE_CHOICES.ARTIST:
+                Artist.objects.create(
+                    user=user,
+                )
+            elif role == ROLE_CHOICES.VENUE:
+                Venue.objects.create(
+                    user=user,
+                )
+            elif role == ROLE_CHOICES.FAN:  
+                Fan.objects.create(
+                    user=user,
+                )
+            user.delete()
+            return Response({
+                'user': serializer.data,
+                'message': f'{role.capitalize()} account created successfully'
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 @api_view(['PUT'])
 @permission_classes([AllowAny])
 def verify_otp(request):
