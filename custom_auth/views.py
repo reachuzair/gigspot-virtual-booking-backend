@@ -35,7 +35,7 @@ def signup(request):
                     user=user,
                 )
             return Response({
-                'user': serializer.data,
+                'user': UserSerializer(user).data,
                 'message': f'{role.capitalize()} account created successfully'
             }, status=status.HTTP_201_CREATED)
         else:
