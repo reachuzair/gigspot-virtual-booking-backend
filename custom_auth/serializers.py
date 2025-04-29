@@ -3,6 +3,9 @@ from django.contrib.auth import get_user_model
 from .models import ROLE_CHOICES
 from utils.email import send_templated_email
 from users.models import UserSettings
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -18,7 +21,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         }
         
     def validate(self, data):
-        print("serializer validate")
+        logger.info("serializer validate")
         role = data.get('role')
         
         if role == ROLE_CHOICES.ARTIST or role == ROLE_CHOICES.FAN:
@@ -32,7 +35,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return data
         
     def create(self, validated_data):
-        print("serializer create")
+        logger.info("serializer create")
         # Remove role-specific fields before user creation
         
         user = User.objects.create_user(**validated_data)

@@ -8,6 +8,9 @@ from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer, UserSerializer
 from utils.email import send_templated_email
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -49,41 +52,41 @@ def signup_view(request):
 def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
-        print("0")
+        logger.info("0")
         if serializer.is_valid():
             # Create the base user
-            print("1")
+            logger.info("1")
             user = serializer.save()
-            print("2")
+            logger.info("2")
             # Handle role-specific profile creation
             role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
-            print("3")
+            logger.info("3")
             if role == ROLE_CHOICES.ARTIST:
-                print("4")
+                logger.info("4")
                 Artist.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.VENUE:
-                print("5")
+                logger.info("5")
                 Venue.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.FAN:  
-                print("6")
+                logger.info("6")
                 Fan.objects.create(
                     user=user,
                 )
             user.delete()
-            print("7")
+            logger.info("7")
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
             }, status=status.HTTP_201_CREATED)
         else:
-            print("8")
+            logger.info("8")
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        print("9")
+        logger.info("9")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
