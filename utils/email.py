@@ -1,6 +1,9 @@
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 def send_templated_email(subject, recipient_list, template_name, context):
     """
@@ -17,7 +20,7 @@ def send_templated_email(subject, recipient_list, template_name, context):
 
     # Render plain text content by stripping HTML tags
     # text_content = render_to_string(f"emails/{template_name}.txt", context)
-    
+    logger.info("email rendered")
     # Create email
     email = EmailMultiAlternatives(
         subject=subject,
@@ -27,3 +30,4 @@ def send_templated_email(subject, recipient_list, template_name, context):
     )
     email.attach_alternative(html_content, "text/html")
     email.send()
+    logger.info("email sent")

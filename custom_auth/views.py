@@ -86,7 +86,7 @@ def signup(request):
             logger.info("8")
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        logger.info("9")
+        logger.exception("Exception in signup")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
