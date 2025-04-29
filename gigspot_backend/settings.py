@@ -108,7 +108,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), 6379)],
+            "hosts": [('127.0.0.1', 6379)],
         },
     },
 }
@@ -195,3 +195,18 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')  # Default sender email
 # Stripe Configuration
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",  # or your Redis URL
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+# For session storage (if using Redis for sessions)
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
