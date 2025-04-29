@@ -30,16 +30,10 @@ def signup_view(request):
                 Venue.objects.create(
                     user=user,
                 )
-            elif role == ROLE_CHOICES.FAN:
+            elif role == ROLE_CHOICES.FAN:  
                 Fan.objects.create(
                     user=user,
                 )
-            
-            try:
-                create_notification(user, 'system', 'Welcome!', description=f'Your {role} account was created successfully.')
-            except Exception as notify_exc:
-                # Log or print the error if needed, but do not fail signup
-                print(f"Notification error: {notify_exc}")
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
