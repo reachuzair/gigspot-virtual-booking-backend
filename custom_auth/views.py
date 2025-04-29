@@ -14,79 +14,33 @@ logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def signup_view(request):
-    try:
-        serializer = UserCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            # Create the base user
-            user = serializer.save()
-        
-            # Handle role-specific profile creation
-            role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
-            
-            # if role == ROLE_CHOICES.ARTIST:
-            #     Artist.objects.create(
-            #         user=user,
-            #     )
-            # elif role == ROLE_CHOICES.VENUE:
-            #     Venue.objects.create(
-            #         user=user,
-            #     )
-            # elif role == ROLE_CHOICES.FAN:  
-            #     Fan.objects.create(
-            #         user=user,
-            #     )
-            user.delete()
-            return Response({
-                'user': serializer.data,
-                'message': f'{role.capitalize()} account created successfully'
-            }, status=status.HTTP_201_CREATED)
-        else:
-            return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
 def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
-        logger.info("0")
         if serializer.is_valid():
             # Create the base user
-            logger.info("1")
             user = serializer.save()
-            logger.info("2")
             # Handle role-specific profile creation
             role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
-            logger.info("3")
             if role == ROLE_CHOICES.ARTIST:
-                logger.info("4")
                 Artist.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.VENUE:
-                logger.info("5")
                 Venue.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.FAN:  
-                logger.info("6")
                 Fan.objects.create(
                     user=user,
                 )
-            user.delete()
-            logger.info("7")
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
             }, status=status.HTTP_201_CREATED)
         else:
-            logger.info("8")
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        logger.exception("Exception in signup")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])

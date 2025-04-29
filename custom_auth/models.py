@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
-        logger.info("create user")
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)

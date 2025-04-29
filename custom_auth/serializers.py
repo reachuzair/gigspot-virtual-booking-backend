@@ -21,7 +21,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
         }
         
     def validate(self, data):
-        logger.info("serializer validate")
         role = data.get('role')
         
         if role == ROLE_CHOICES.ARTIST or role == ROLE_CHOICES.FAN:
@@ -35,18 +34,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return data
         
     def create(self, validated_data):
-        logger.info("serializer create")
         # Remove role-specific fields before user creation
         
         user = User.objects.create_user(**validated_data)
-        logger.info("serializer created user")
         UserSettings.objects.create(user=user)
-        logger.info("serializer created user settings")
 
         otp = user.gen_otp()
-        logger.info("serializer generated otp")
         send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
-        logger.info("serializer sent otp")
 
         return user
 
