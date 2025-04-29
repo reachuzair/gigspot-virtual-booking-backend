@@ -40,7 +40,7 @@ def signup_view(request):
         else:
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
 @permission_classes([AllowAny])
