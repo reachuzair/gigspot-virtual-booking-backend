@@ -49,33 +49,41 @@ def signup_view(request):
 def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
+        print("0")
         if serializer.is_valid():
             # Create the base user
+            print("1")
             user = serializer.save()
-        
+            print("2")
             # Handle role-specific profile creation
             role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
-            
+            print("3")
             if role == ROLE_CHOICES.ARTIST:
+                print("4")
                 Artist.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.VENUE:
+                print("5")
                 Venue.objects.create(
                     user=user,
                 )
             elif role == ROLE_CHOICES.FAN:  
+                print("6")
                 Fan.objects.create(
                     user=user,
                 )
             user.delete()
+            print("7")
             return Response({
                 'user': serializer.data,
                 'message': f'{role.capitalize()} account created successfully'
             }, status=status.HTTP_201_CREATED)
         else:
+            print("8")
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        print("9")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])

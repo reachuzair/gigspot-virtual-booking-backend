@@ -7,6 +7,7 @@ import random
 
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
+        print("create user")
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)

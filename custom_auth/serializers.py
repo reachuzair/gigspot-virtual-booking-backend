@@ -18,6 +18,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         }
         
     def validate(self, data):
+        print("serializer validate")
         role = data.get('role')
         
         if role == ROLE_CHOICES.ARTIST or role == ROLE_CHOICES.FAN:
@@ -31,6 +32,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return data
         
     def create(self, validated_data):
+        print("serializer create")
         # Remove role-specific fields before user creation
         
         user = User.objects.create_user(**validated_data)
