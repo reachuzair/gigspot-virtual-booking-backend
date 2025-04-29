@@ -20,8 +20,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gigspot_backend.settings')
 application = ProtocolTypeRouter({
     'http': get_asgi_application(),
     'websocket': AuthMiddlewareStack(
-        URLRouter(
+        URLRouter([
             path("ws/notifications/", NotificationConsumer.as_asgi()),
-        )
+        ])
     ),
 })
