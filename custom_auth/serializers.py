@@ -39,10 +39,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         # Remove role-specific fields before user creation
         
         user = User.objects.create_user(**validated_data)
+        logger.info("serializer created user")
         UserSettings.objects.create(user=user)
+        logger.info("serializer created user settings")
 
         otp = user.gen_otp()
+        logger.info("serializer generated otp")
         send_templated_email('OTP Verification', [user.email], 'otp_verification', {'otp': otp})
+        logger.info("serializer sent otp")
 
         return user
 
