@@ -104,7 +104,7 @@ def login_view(request):
         if not user.check_password(password):
             return Response({"detail": "Invalid password"}, status=status.HTTP_400_BAD_REQUEST)
         
-        if not user.email_verfied:
+        if not user.email_verified:
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         login(request, user)
