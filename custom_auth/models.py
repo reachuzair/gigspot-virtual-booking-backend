@@ -51,7 +51,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     profileImage = models.ImageField(upload_to=user_profile_image_path, blank=True, null=True, default=None)
     ver_code = models.CharField(max_length=255, blank=True, null=True)
     ver_code_expires = models.DateTimeField(blank=True, null=True)
-    email_verfied = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)  # Required for Django admin
     is_active = models.BooleanField(default=True)  # Required for Django admin
@@ -111,10 +111,11 @@ class Artist(models.Model):
     performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
     subscription_tier = models.CharField(max_length=255, choices=SubscriptionTier.choices, default=SubscriptionTier.STARTER)
     shows_created = models.PositiveIntegerField(default=0)
-    active_collaborations = models.ManyToManyField('self', symmetrical=False)
+    active_collaborations = models.ManyToManyField('self', symmetrical=False, related_name='collaborators')
     soundcharts_uuid = models.CharField(max_length=255, blank=True, null=True, default=None)
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)
+    connections = models.ManyToManyField('self', symmetrical=False, related_name='artist_connections')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
