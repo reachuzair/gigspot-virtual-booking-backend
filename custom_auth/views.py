@@ -68,7 +68,7 @@ def verify_otp(request):
         user.ver_code_expires = None
         user.save()
         
-        return Response({"detail": "Email verified successfully"}, status=status.HTTP_200_OK)
+        return Response({"detail": "Email verified successfully", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
