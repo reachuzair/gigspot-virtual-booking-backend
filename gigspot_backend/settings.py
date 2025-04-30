@@ -58,7 +58,8 @@ INSTALLED_APPS = [
     'users',
     'gigs',
     'subscriptions',
-    'services'
+    'services',
+    'connections',
 ]
 
 REST_FRAMEWORK = {
