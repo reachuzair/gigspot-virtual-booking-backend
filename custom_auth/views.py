@@ -57,9 +57,6 @@ def verify_otp(request):
         if user.ver_code != otp:
             return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
         
-        if user.email_verified:
-            return Response({"detail": "Email already verified"}, status=status.HTTP_400_BAD_REQUEST)
-        
         if user.ver_code_expires < timezone.now():
             return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
         
