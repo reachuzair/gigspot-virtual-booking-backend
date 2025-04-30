@@ -53,7 +53,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id',
             'email',
             'name',
-            'email_verfied',
+            'email_verified',
             'role',
             'is_active',
             'created_at',
