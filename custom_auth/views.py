@@ -57,13 +57,13 @@ def verify_otp(request):
         if user.ver_code != otp:
             return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
         
-        if user.email_verfied:
+        if user.email_verified:
             return Response({"detail": "Email already verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         if user.ver_code_expires < timezone.now():
             return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
         
-        user.email_verfied = True
+        user.email_verified = True
         user.ver_code = None
         user.ver_code_expires = None
         user.save()
@@ -80,7 +80,7 @@ def resend_otp(request, email):
         if not user:
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         
-        if user.email_verfied:
+        if user.email_verified:
             return Response({"detail": "Email already verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         otp = user.gen_otp()
@@ -108,12 +108,6 @@ def login_view(request):
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
         
         login(request, user)
-        
-        # try:
-        #     create_notification(user, 'system', 'Recent Activity', description='You have successfully logged in.')
-        # except Exception as notify_exc:
-        #     # Log or print the error if needed, but do not fail login
-        #     print(f"Notification error: {notify_exc}")
         
         return Response({"detail": "Login successful", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
     except Exception as e:
