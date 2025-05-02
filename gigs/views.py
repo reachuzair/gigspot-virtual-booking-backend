@@ -82,7 +82,38 @@ def initiate_gig(request):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_gig_status(request, id):
+    user = request.user
 
+    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    data = request.data.copy()
+    is_public = data.get('is_public', None)
+    
+    if is_public is None:
+        return Response({'detail': 'is_public value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        gig = Gig.objects.get(id=id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        gig.is_public = is_public
+        gig.save()
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    serializer = GigSerializer(gig)
+    
+    create_notification(request.user, 'system', 'Gig status updated successfully', **gig.__dict__)
+    return Response({
+        'gig': serializer.data,
+        'message': 'Gig status updated successfully'
+    }, status=status.HTTP_201_CREATED)
+    
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
