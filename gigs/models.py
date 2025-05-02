@@ -28,8 +28,16 @@ class Gig(models.Model):
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
     is_approved = models.BooleanField(default=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Set expires_at to 10 minutes after created_at if not already set
+        if not self.expires_at and self.created_at:
+            self.expires_at = self.created_at + timezone.timedelta(minutes=10)
+        super(Gig, self).save(*args, **kwargs)
+
 
     def __str__(self):
         return self.name
