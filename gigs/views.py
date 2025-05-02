@@ -54,6 +54,37 @@ def get_gig(request, id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
+@perissions_classes([IsAuthenticated])
+def initiate_gig(request):
+    user = request.user
+
+    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    data = request.data.copy()
+    venue_id = data.get('venue', None)
+    
+    try:
+        venue = Venue.objects.get(id=venue_id)
+    except Venue.DoesNotExist:
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    data['venue'] = venue
+    data['user'] = user
+    serializer = GigSerializer(data=data, partial=True)
+    if serializer.is_valid():
+        gig = serializer.save()
+        create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
+        return Response({
+            'gig': serializer.data,
+            'message': 'Gig created successfully'
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_gig(request):
     user = request.user
@@ -71,7 +102,7 @@ def create_gig(request):
     
     data['venue'] = venue
     
-    serializer = GigSerializer(data=data)
+    serializer = GigSerializer(data=data, partial=True)
     if serializer.is_valid():
         gig = serializer.save()
         create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
