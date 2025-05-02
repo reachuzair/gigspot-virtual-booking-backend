@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='gig',
             name='eventEndDate',
-            field=models.DateTimeField(default=gigs.models.Gig.default_event_end_date),
+            field=models.DateTimeField(),
         ),
         migrations.AddField(
             model_name='gig',
