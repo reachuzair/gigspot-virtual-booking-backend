@@ -54,7 +54,7 @@ def get_gig(request, id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
-@perissions_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def initiate_gig(request):
     user = request.user
 
