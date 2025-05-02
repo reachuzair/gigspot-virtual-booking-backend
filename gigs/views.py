@@ -58,17 +58,18 @@ def get_gig(request, id):
 def create_gig(request):
     user = request.user
     
-    if user.role != ROLE_CHOICES.VENUE:
+    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
+    data = request.data.copy()
+    venue_id = data.get('venue', None)
+    
     try:
-        venue = Venue.objects.select_related('user').get(user=user)
+        venue = Venue.objects.get(id=venue_id)
     except Venue.DoesNotExist:
         return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    data = request.data.copy()
-    data['venue'] = {'id': venue.id}
-    data['is_live'] = True
+    data['venue'] = venue
     
     serializer = GigSerializer(data=data)
     if serializer.is_valid():
@@ -80,6 +81,7 @@ def create_gig(request):
         }, status=status.HTTP_201_CREATED)
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
 
 @api_view(['PUT'])

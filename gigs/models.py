@@ -26,6 +26,7 @@ class Gig(models.Model):
     minimum_performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
     request_message = models.TextField(blank=True, null=True, default="")
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
     is_approved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

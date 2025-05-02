@@ -9,31 +9,36 @@ class VenueSerializer(serializers.ModelSerializer):
         fields = ['id']
 
 class GigSerializer(serializers.ModelSerializer):
-    venue = VenueSerializer()
+    venue = VenueSerializer(read_only=True)
     flyer_bg_url = serializers.SerializerMethodField()
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Gig
         fields = [
             'id',
             'name',
-            'startDate',
-            'endDate',
-            'eventStartDate',
-            'eventEndDate',
+            'booking_start_date',
+            'booking_end_date',
+            'event_date',
             'description',
+            'user',
             'venue',
+            'is_public',
             'max_artist',
+            'max_tickets',
+            'ticket_price',
+            'genre',
+            'minimum_performance_tier',
+            'request_message',
             'flyer_bg',
             'flyer_bg_url',
-            'is_live',
-            'flyer_text',
+            'is_approved',
             'created_at',
-            'updated_at'
+            'updated_at',
         ]
         extra_kwargs = {
             'flyer_bg': {'write_only': True},
-            'venue': {'required': True}
         }
 
     def get_flyer_bg_url(self, obj):
@@ -42,10 +47,11 @@ class GigSerializer(serializers.ModelSerializer):
         return None
 
     def create(self, validated_data):
-        venue_data = validated_data.pop('venue')
-        venue = Venue.objects.get(**venue_data)
-        gig = Gig.objects.create(venue=venue, **validated_data)
+        request = self.context.get('request')
+        user = request.user if request else None
+        gig = Gig.objects.create(user=user, **validated_data)
         return gig
+
 
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
