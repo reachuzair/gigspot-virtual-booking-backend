@@ -16,14 +16,31 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
+from rest_framework.pagination import PageNumberPagination
+from django.core.cache import cache
 # Create your views here.
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_gigs(request):
-    gigs = Gig.objects.all()
-    return Response({'gigs': list(gigs.values())})
+    user = request.user
+    per_page = request.query_params.get('per_page', 10)
+    page = request.query_params.get('page', 1)
+    paginator = PageNumberPagination()
+    paginator.page_size = per_page
+
+    # Create a unique cache key per user and page
+    cache_key = f"gigs_{user.id}_page_{page}_perpage_{per_page}"
+    cached_response = cache.get(cache_key)
+    if cached_response:
+        return paginator.get_paginated_response(cached_response)
+
+    gigs = Gig.objects.filter(user=user)
+    result_page = paginator.paginate_queryset(gigs, request)
+    serializer = GigSerializer(result_page, many=True)
+    cache.set(cache_key, serializer.data, timeout=60*5)  # cache for 5 minutes
+    return paginator.get_paginated_response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
