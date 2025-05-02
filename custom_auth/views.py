@@ -155,5 +155,26 @@ def change_password(request):
     
     return Response({"detail": "Password changed successfully"}, status=status.HTTP_200_OK)
     
+@api_view(['PUT'])
+@permission_classes([AllowAny])
+def reset_password(request):
+    # Get data from the request
+    new_password = request.data.get('new_password')
+    email = request.data.get('email')
+
+    if not new_password or not email:
+        return Response(
+            {"detail": _("new password, email are required")},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        user = User.objects.get(email=email)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({"message": "Password reset successful"}, status=status.HTTP_200_OK)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return Response({"detail": "Invalid user"}, status=status.HTTP_400_BAD_REQUEST)
 
 
