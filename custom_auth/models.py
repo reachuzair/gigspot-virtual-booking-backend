@@ -140,6 +140,10 @@ class Venue(models.Model):
     location = models.JSONField(default=list)
     capacity = models.IntegerField(default=0)
     amenities = models.JSONField(default=list)
+    seating_plan = models.ImageField(upload_to='venue_seating_plan', blank=True, null=True)
+    reservation_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    artist_capacity = models.IntegerField(default=0)
+    is_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
