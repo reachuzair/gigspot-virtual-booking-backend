@@ -117,13 +117,28 @@ def add_gig_type(request, id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def add_gig_details(request):
+def add_gig_details(request, id):
     user = request.user
     
     if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
+    try:
+        gig = Gig.objects.get(id=id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
     data = request.data.copy()
+    max_tickets = data.get('max_tickets', None)
+    
+    if max_tickets is None:
+        return Response({'detail': 'max_tickets value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+    venue = Venue.objects.get(id=gig.venue)
+
+    if max_tickets > venue.capacity:
+        return Response({'detail': 'Max tickets value exceeds venue capacity'}, status=status.HTTP_400_BAD_REQUEST)
+    data['max_artist'] = venue.artist_capacity
     
     serializer = GigSerializer(data=data, partial=True)
     if serializer.is_valid():
