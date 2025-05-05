@@ -137,39 +137,6 @@ def add_gig_details(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
-
-@api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_gig(request, id):
-    try:
-        gig = Gig.objects.get(id=id)
-    except Gig.DoesNotExist:
-        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    key = request.data.get('key', None)
-    value = request.data.get('value', None)
-
-    if not key or not value:
-        return Response({'detail': 'Invalid key or value'}, status=status.HTTP_400_BAD_REQUEST)
-
-    allowed_keys = ['name', 'description', 'startDate', 'endDate', 'eventStartDate', 'eventEndDate', 'max_artist', 'flyer_text']
-    if key not in allowed_keys:
-        return Response({'detail': 'Invalid key'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if key == 'is_live':
-        return update_gig_live_status(request, id)
-
-    serializer = GigSerializer(gig, data={key: value})
-    if serializer.is_valid():
-        serializer.save()
-        create_notification(request.user, 'system', 'Gig updated successfully', **gig.__dict__)
-        return Response({
-            'gig': serializer.data,
-            'message': 'Gig updated successfully'
-        }, status=status.HTTP_200_OK)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 def generate_contract_pdf(contract):
     """
     Generate a PDF contract with the given contract details.
@@ -208,14 +175,23 @@ def generate_contract_pdf(contract):
     # Add contract details
     elements.append(Paragraph(f"Venue: {contract.venue.user.name}", content_style))
     elements.append(Paragraph(f"Artist: {contract.artist.user.name}", content_style))
-    elements.append(Paragraph(f"Price: ${contract.price}", content_style))
-    elements.append(Paragraph(f"Date: {contract.created_at.date()}", content_style))
+    elements.append(Paragraph(f"Venue Fee: ${contract.price}", content_style))
+    elements.append(Paragraph(f"Gig: {contract.gig.name}", content_style))
+    elements.append(Paragraph(f"Ticket Price: ${contract.gig.ticket_price}", content_style))
+    elements.append(Paragraph(f"Event Date: {contract.gig.event_date.date()}", content_style))
+    elements.append(Paragraph(f"Contract Date: {contract.created_at.date()}", content_style))
+    
+    requests_to_artist = [req for req in contract.request_message.split('. ') if req.strip()]
+
+    elements.append(Spacer(1, 20))
+    for req in requests_to_artist:
+        elements.append(Paragraph(req, content_style))
     
     # Add terms and conditions
     terms = [
         "Terms and Conditions:",
         "1. The artist agrees to perform the services as described.",
-        "2. The recipient agrees to pay the agreed amount.",
+        "2. The recipient agrees to pay the agreed amount of ${contract.price}.",
         "3. Any changes must be agreed upon by both parties.",
         "4. This contract is legally binding."
     ]
@@ -248,78 +224,96 @@ def generate_contract_image(contract):
     Returns:
         BytesIO object containing the generated image
     """
-    image = Image.new('RGB', (800, 1000), color=(255, 255, 255))
+    image = Image.new('RGB', (800, 1200), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
-    
+
     try:
-        font = ImageFont.truetype("arial.ttf", 20)
+        font_title = ImageFont.truetype("arial.ttf", 32)
+        font_content = ImageFont.truetype("arial.ttf", 20)
     except:
-        font = ImageFont.load_default()
-    
-    # Add contract content
-    draw.text((50, 50), "CONTRACT AGREEMENT", font=font, fill=(0, 0, 0))
-    draw.text((50, 100), f"Venue: {contract.venue.user.name}", font=font, fill=(0, 0, 0))
-    draw.text((50, 130), f"Artist: {contract.artist.user.name}", font=font, fill=(0, 0, 0))
-    draw.text((50, 160), f"Price: ${contract.price}", font=font, fill=(0, 0, 0))
-    draw.text((50, 190), f"Date: {contract.created_at.date()}", font=font, fill=(0, 0, 0))
-    
-    # Add terms and conditions
+        font_title = ImageFont.load_default()
+        font_content = ImageFont.load_default()
+
+    y = 40
+    line_spacing = 36
+    small_spacing = 28
+
+    # Title
+    draw.text((50, y), "CONTRACT AGREEMENT", font=font_title, fill=(0, 0, 0))
+    y += line_spacing + 10
+
+    # Contract details
+    draw.text((50, y), f"Venue: {contract.venue.user.name}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Artist: {contract.artist.user.name}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Venue Fee: ${contract.price}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Gig: {contract.gig.name}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Ticket Price: ${contract.gig.ticket_price}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Event Date: {contract.gig.event_date.date()}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+    draw.text((50, y), f"Contract Date: {contract.created_at.date()}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+
+    # Requests to Artist (split at '. ')
+    requests_to_artist = [req for req in contract.request_message.split('. ') if req.strip()]
+    if requests_to_artist:
+        y += 12
+        draw.text((50, y), "Requests to Venue:", font=font_content, fill=(0, 0, 0)); y += small_spacing
+        for req in requests_to_artist:
+            draw.text((70, y), f"- {req}", font=font_content, fill=(0, 0, 0)); y += small_spacing
+
+    # Terms and conditions
     terms = [
         "Terms and Conditions:",
         "1. The artist agrees to perform the services as described.",
-        "2. The recipient agrees to pay the agreed amount.",
+        f"2. The recipient agrees to pay the agreed amount of ${contract.price}.",
         "3. Any changes must be agreed upon by both parties.",
         "4. This contract is legally binding."
     ]
-    
-    y_position = 250
+    y += 20
     for term in terms:
-        draw.text((50, y_position), term, font=font, fill=(0, 0, 0))
-        y_position += 30
-    
-    # Add signatures placeholder
-    draw.text((50, 450), "Venue Signature: ________________________", font=font, fill=(0, 0, 0))
-    draw.text((50, 500), "Artist Signature: ________________________", font=font, fill=(0, 0, 0))
-    
+        draw.text((50, y), term, font=font_content, fill=(0, 0, 0))
+        y += small_spacing
+
+    # Signatures
+    y += 30
+    draw.text((50, y), "Venue Signature: ________________________", font=font_content, fill=(0, 0, 0)); y += small_spacing + 10
+    draw.text((50, y), "Artist Signature: ________________________", font=font_content, fill=(0, 0, 0)); y += small_spacing
+
     # Save the image to BytesIO
     image_io = io.BytesIO()
     image.save(image_io, format='PNG')
-    
+    image_io.seek(0)
     return image_io
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def generate_contract(request):
+def generate_contract(request, gig_id):
     user = request.user
-    artist = request.data.get('artist', None)
-    price = request.data.get('price', None)
-    gig = request.data.get('gig', None)
-    
-    if not artist or not price or not gig:
-        return Response({'detail': 'Invalid artist or price or gig'}, status=status.HTTP_400_BAD_REQUEST)
+    price = float(request.data.get('price', 0))
 
+    if price <= 0:
+        return Response({'detail': 'Price cannot be less than or equal to 0'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        artist = Artist.objects.get(id=artist)
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        artist = Artist.objects.get(id=gig.artist)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
-        venue = Venue.objects.get(user=user)
+        venue = Venue.objects.get(id=gig.venue)
     except Venue.DoesNotExist:
-        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    try:
-        gig = Gig.objects.get(id=gig)
-    except Gig.DoesNotExist:
-        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
         # Create a new contract (adjust fields as needed)
         contract = Contract.objects.create(
             artist=artist,  # assuming user has an artist profile
             venue=venue,  # assuming you pass venue_id in request
-            price=price,
-            gig=gig
+            gig=gig,
+            price=price
         )
         
         # Generate contract PDF
@@ -334,7 +328,7 @@ def generate_contract(request):
         
         # Return the PDF as response
         pdf_buffer.seek(0)
-        return Response({'contract': {'id': contract.id,'artist': artist.user.name, 'venue': venue.user.name, 'gig': gig.name, 'price': contract.price, 'pdf_url': contract.pdf.url, 'image_url': contract.image.url}}, status=status.HTTP_200_OK)
+        return Response({'contract': {'id': contract.id,'artist': artist.user.name, 'venue': venue.user.name, 'gig': gig.name, 'pdf_url': contract.pdf.url, 'image_url': contract.image.url}}, status=status.HTTP_200_OK)
         
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

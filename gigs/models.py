@@ -55,7 +55,7 @@ class Contract(models.Model):
     artist_signed = models.BooleanField(default=False)
     pdf = models.FileField(upload_to='gigs/contracts/', blank=True, null=True)
     image = models.ImageField(upload_to='gigs/contracts/', blank=True, null=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
