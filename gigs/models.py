@@ -4,6 +4,11 @@ from django.utils import timezone
 
 # Create your models here.
 
+class Status(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    APPROVED = 'approved', 'Approved'
+    REJECTED = 'rejected', 'Rejected'
+    
 class GenreChoices(models.TextChoices):
     RAP = 'rap', 'Rap'
     HIP_HOP = 'hip_hop', 'Hip Hop'
@@ -27,7 +32,7 @@ class Gig(models.Model):
     request_message = models.TextField(blank=True, null=True, default="")
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
-    is_approved = models.BooleanField(default=False)
+    status = models.CharField(max_length=255, choices=Status.choices, default=Status.PENDING)
     expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
