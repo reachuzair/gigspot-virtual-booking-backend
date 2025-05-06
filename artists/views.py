@@ -7,6 +7,7 @@ from .serializers import ArtistSerializer
 
 from rest_framework.pagination import PageNumberPagination
 from custom_auth.models import PerformanceTier
+from django.db.models import Q
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -18,9 +19,13 @@ def list_artists(request):
     except Artist.DoesNotExist:
         requesting_artist = None
         user_tier = None
-
+    search_query = request.query_params.get('search', '')
+    if search_query:
+        queryset = Artist.objects.filter(Q(band_name__icontains=search_query) | Q(user__name__icontains=search_query) | Q(user__email__icontains=search_query))
+    else:
+        queryset = Artist.objects.all()
     # Exclude the requesting artist
-    queryset = Artist.objects.exclude(user=user)
+    queryset = queryset.exclude(user=user)
 
     # Sort: matching performance_tier first, then others
     if user_tier:
