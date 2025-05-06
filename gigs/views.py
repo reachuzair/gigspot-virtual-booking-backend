@@ -168,7 +168,7 @@ def initiate_gig(request):
     
     data['venue'] = venue
     data['user'] = user
-    serializer = GigSerializer(data=data, partial=True)
+    serializer = GigSerializer(gig, data=data, partial=True)
     if serializer.is_valid():
         gig = serializer.save()
         create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
@@ -226,6 +226,9 @@ def add_gig_details(request, id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
+    # If flyer_bg is present in FILES, add it to data
+    if 'flyer_bg' in request.FILES:
+        data['flyer_bg'] = request.FILES['flyer_bg']
     max_tickets = data.get('max_tickets', None)
     
     if max_tickets is None:
@@ -237,7 +240,7 @@ def add_gig_details(request, id):
         return Response({'detail': 'Max tickets value exceeds venue capacity'}, status=status.HTTP_400_BAD_REQUEST)
     data['max_artist'] = venue.artist_capacity
     
-    serializer = GigSerializer(data=data, partial=True)
+    serializer = GigSerializer(gig, data=data, partial=True, context={"request": request})
     if serializer.is_valid():
         gig = serializer.save()
         create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
