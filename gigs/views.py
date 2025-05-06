@@ -41,6 +41,63 @@ def get_gigs(request):
     cache.set(cache_key, serializer.data, timeout=60*5)  # cache for 5 minutes
     return paginator.get_paginated_response(serializer.data)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_gigs(request):
+    import math
+    user = request.user
+    per_page = int(request.query_params.get('per_page', 10))
+    page = int(request.query_params.get('page', 1))
+    paginator = PageNumberPagination()
+    paginator.page_size = per_page
+
+    location = request.query_params.get('location', None)
+    radius = int(request.query_params.get('radius', 30))
+    search_query = request.query_params.get('search', '')
+    gigs = Gig.objects.all()
+
+    # If location is provided, filter gigs within radius miles
+    if location:
+        try:
+            lat_str, lon_str = location.split(',')
+            user_lat, user_lon = float(lat_str), float(lon_str)
+        except Exception:
+            return Response({'detail': 'Invalid location format. Use lat,lon'}, status=status.HTTP_400_BAD_REQUEST)
+
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 3958.8  # Radius of earth in miles
+            phi1 = math.radians(lat1)
+            phi2 = math.radians(lat2)
+            dphi = math.radians(lat2 - lat1)
+            dlambda = math.radians(lon2 - lon1)
+            a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            return R * c
+
+        gigs_in_radius = []
+        for gig in gigs:
+            venue = gig.venue
+            if not venue or not venue.location or len(venue.location) < 2:
+                continue
+            venue_lat, venue_lon = venue.location[0], venue.location[1]
+            try:
+                venue_lat, venue_lon = float(venue_lat), float(venue_lon)
+            except Exception:
+                continue
+            distance = haversine(user_lat, user_lon, venue_lat, venue_lon)
+            if distance <= radius:
+                gigs_in_radius.append(gig)
+        gigs = gigs_in_radius
+
+    if search_query:
+        gigs = gigs.filter(Q(name__icontains=search_query))
+
+    gigs = gigs.filter(status='approved')
+    
+    result_page = paginator.paginate_queryset(gigs, request)
+    serializer = GigSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
