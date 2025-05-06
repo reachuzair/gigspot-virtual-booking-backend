@@ -262,9 +262,12 @@ def update_gig_status(request, id):
     data = request.data.copy()
     status = data.get('status', None)
     
-    allowed_status = ['approved', 'rejected']
     if status is None:
         return Response({'detail': 'status value missing'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    allowed_status = ['approved', 'rejected']
+    if status not in allowed_status:
+        return Response({'detail': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         gig = Gig.objects.get(id=id)
