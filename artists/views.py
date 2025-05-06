@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 from .models import Artist
 from .serializers import ArtistSerializer
 
@@ -40,3 +41,21 @@ def list_artists(request):
     paginated_artists = paginator.paginate_queryset(sorted_artists, request)
     serializer = ArtistSerializer(paginated_artists, many=True)
     return paginator.get_paginated_response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_artist(request, artist_id):
+    from gigs.models import Gig
+    from gigs.serializers import GigSerializer
+    try:
+        artist = Artist.objects.get(id=artist_id)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
+    # Serialize artist data
+    artist_serializer = ArtistSerializer(artist)
+    # Get gigs for this artist
+    gigs = Gig.objects.filter(artist=artist)
+    gigs_serializer = GigSerializer(gigs, many=True)
+    response_data = artist_serializer.data
+    response_data['gigs'] = gigs_serializer.data
+    return Response(response_data)
