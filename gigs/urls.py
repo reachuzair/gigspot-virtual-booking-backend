@@ -10,6 +10,7 @@ from .views import (
     add_gig_type,
     initiate_gig,
     add_gig_details,
+    add_invitees,
     )
 
 urlpatterns = [
@@ -22,5 +23,6 @@ urlpatterns = [
     # path('<int:id>/status/', add_gig_status, name='add_gig_status'),  
     path('<int:id>/type/', add_gig_type, name='add_gig_type'),
     path('initiate/', initiate_gig, name='initiate_gig'),
-    path('<int:id>/add-details/', add_gig_details, name='add_gig_details')
+    path('<int:id>/add-details/', add_gig_details, name='add_gig_details'),
+    path('<int:id>/invitees/', add_invitees, name='add_invitees')
 ]

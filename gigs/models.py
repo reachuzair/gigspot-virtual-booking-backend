@@ -33,6 +33,7 @@ class Gig(models.Model):
     flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
     status = models.CharField(max_length=255, choices=Status.choices, default=Status.PENDING)
+    invitees = models.ManyToManyField(Artist, related_name='invited_gigs', blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
