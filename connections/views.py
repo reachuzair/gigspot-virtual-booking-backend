@@ -109,6 +109,37 @@ def reject_connection_request(request):
     connection.save()
     return Response({'detail': 'Connection rejected.'}, status=status.HTTP_201_CREATED)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_connection_requests(request):
+    """
+    Get connection requests for the authenticated artist.
+    """
+    requests_as = request.query_params.get('as', 'sent')
+    allowed_requests_as = ['sent', 'received']
+    if requests_as not in allowed_requests_as:
+        return Response({'detail': 'Invalid as value.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        artist = Artist.objects.get(user=request.user)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if requests_as == 'sent':
+        connection_requests = Connection.objects.filter(artist=artist, status='pending')
+    else:
+        connection_requests = Connection.objects.filter(connected_artist=artist, status='pending')
+    data = [
+        {
+            'id': conn.id,
+            'band_name': conn.connected_artist.band_name,
+            'user_id': conn.connected_artist.user.id,
+            'state': conn.connected_artist.state,
+            'performance_tier': conn.connected_artist.performance_tier,
+            'subscription_tier': conn.connected_artist.subscription_tier,
+        }
+        for conn in connection_requests
+    ]
+    return Response({'connection_requests': data}, status=status.HTTP_200_OK)
+
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def artist_disconnect(request):
