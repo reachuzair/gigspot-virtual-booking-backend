@@ -71,4 +71,17 @@ class Contract(models.Model):
     class Meta:
         verbose_name = 'Contract'
         verbose_name_plural = 'Contracts'
+
+class GigInviteStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    ACCEPTED = 'accepted', 'Accepted'
+    REJECTED = 'rejected', 'Rejected'
+
+class GigInvite(models.Model):
+    gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='gig_invites_sent')
+    artist_received = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='gig_invites_received')
+    status = models.CharField(max_length=255, choices=GigInviteStatus.choices, default=GigInviteStatus.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
