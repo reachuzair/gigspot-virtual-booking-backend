@@ -110,6 +110,43 @@ def get_gig(request, id):
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_invite_request(request, id):
+    user = request.user
+    
+    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    data = request.data.copy()
+    artist = data.get('artist', None)
+    
+    if artist is None:
+        return Response({'detail': 'artist value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        owner = None
+        if user.role == ROLE_CHOICES.VENUE:
+            owner = Venue.objects.get(user=user)
+        elif user.role == ROLE_CHOICES.ARTIST:
+            owner = Artist.objects.get(user=user)
+        gig = Gig.objects.get(id=id)
+        if gig.venue != owner and gig.artist != owner:
+            return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        artist = Artist.objects.get(id=artist)
+        gig_invite = GigInvite.objects.create(gig=gig, artist=owner, artist_received=artist)
+        gig_invite.save()
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    create_notification(request.user, 'system', 'Gig invitation sent', **gig.__dict__)
+    return Response({
+        'message': 'Gig invitation sent successfully'
+    }, status=status.HTTP_201_CREATED)
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def add_invitees(request, id):
