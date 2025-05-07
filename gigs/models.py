@@ -79,7 +79,7 @@ class GigInviteStatus(models.TextChoices):
 
 class GigInvite(models.Model):
     gig = models.ForeignKey('Gig', on_delete=models.CASCADE)
-    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='gig_invites_sent')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gig_invites_sent', default=None, null=True, blank=True)
     artist_received = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name='gig_invites_received')
     status = models.CharField(max_length=255, choices=GigInviteStatus.choices, default=GigInviteStatus.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
