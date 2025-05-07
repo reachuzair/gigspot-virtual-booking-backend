@@ -10,8 +10,8 @@ from .views import (
     initiate_gig,
     add_gig_details,
     update_gig_status,
-    add_invitees,
     send_invite_request,
+    accept_invite_request,
     )
 
 urlpatterns = [
@@ -25,6 +25,6 @@ urlpatterns = [
     path('initiate/', initiate_gig, name='initiate_gig'),
     path('<int:id>/add-details/', add_gig_details, name='add_gig_details'),
     path('<int:id>/status/', update_gig_status, name='update_gig_status'),
-    path('<int:id>/invitees/', add_invitees, name='add_invitees'),
+    path('<int:id>/accept-invite/', accept_invite_request, name='accept_invite_request'),
     path('<int:id>/invite/', send_invite_request, name='send_invite_request')
 ]
