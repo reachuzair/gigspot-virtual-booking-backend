@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import artist_connections, artist_connect, artist_disconnect, send_connection_request, accept_connection_request, reject_connection_request
+from .views import artist_connections, artist_disconnect, send_connection_request, accept_connection_request, reject_connection_request
 
 urlpatterns = [
     path('artist/', artist_connections, name='artist_connections'),
