@@ -48,7 +48,10 @@ def send_connection_request(request):
     target_artist = get_object_or_404(Artist, id=target_id)
     if target_artist == artist:
         return Response({'detail': 'Cannot connect to yourself.'}, status=status.HTTP_400_BAD_REQUEST)
-
+    
+    connection = Connection.objects.filter(artist=artist, connected_artist=target_artist, status='pending')
+    if connection.exists():
+        return Response({'detail': 'Connection request already sent.'}, status=status.HTTP_400_BAD_REQUEST)
     connection = Connection.objects.create(artist=artist, connected_artist=target_artist)
     return Response({'detail': 'Connection request sent.'}, status=status.HTTP_201_CREATED)
 
@@ -70,9 +73,10 @@ def accept_connection_request(request):
     if target_artist == artist:
         return Response({'detail': 'Cannot connect to yourself.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    connection = Connection.objects.get(artist=target_artist, connected_artist=artist)
-    if connection.status != 'pending':
+    connection = Connection.objects.filter(artist=target_artist, connected_artist=artist, status='pending')
+    if not connection.exists():
         return Response({'detail': 'Connection request not found.'}, status=status.HTTP_404_NOT_FOUND)
+    connection = connection.first()
     connection.status = 'accepted'
     connection.save()
     artist.connections.add(target_artist)
@@ -97,9 +101,10 @@ def reject_connection_request(request):
     if target_artist == artist:
         return Response({'detail': 'Cannot connect to yourself.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    connection = Connection.objects.get(artist=target_artist, connected_artist=artist)
-    if connection.status != 'pending':
+    connection = Connection.objects.filter(artist=target_artist, connected_artist=artist, status='pending')
+    if not connection.exists():
         return Response({'detail': 'Connection request not found.'}, status=status.HTTP_404_NOT_FOUND)
+    connection = connection.first()
     connection.status = 'rejected'
     connection.save()
     return Response({'detail': 'Connection rejected.'}, status=status.HTTP_201_CREATED)
