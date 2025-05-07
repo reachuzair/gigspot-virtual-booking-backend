@@ -54,9 +54,9 @@ def send_connection_request(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def artist_connect(request):
+def accept_connection_request(request):
     """
-    Connect to another artist.
+    Accept a connection request from another artist.
     """
     try:
         artist = Artist.objects.get(user=request.user)
@@ -70,8 +70,14 @@ def artist_connect(request):
     if target_artist == artist:
         return Response({'detail': 'Cannot connect to yourself.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    connection = Connection.objects.get(artist=target_artist, connected_artist=artist)
+    if connection.status != 'pending':
+        return Response({'detail': 'Connection request not found.'}, status=status.HTTP_404_NOT_FOUND)
+    connection.status = 'accepted'
+    connection.save()
     artist.connections.add(target_artist)
-    return Response({'detail': 'Connection added.'}, status=status.HTTP_201_CREATED)
+    target_artist.connections.add(artist)
+    return Response({'detail': 'Connection accepted.'}, status=status.HTTP_201_CREATED)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
