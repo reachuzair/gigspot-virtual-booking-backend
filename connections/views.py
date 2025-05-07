@@ -52,7 +52,7 @@ def send_connection_request(request):
     connection = Connection.objects.create(artist=artist, connected_artist=target_artist)
     return Response({'detail': 'Connection request sent.'}, status=status.HTTP_201_CREATED)
 
-@api_view(['POST'])
+@api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def accept_connection_request(request):
     """
@@ -78,6 +78,31 @@ def accept_connection_request(request):
     artist.connections.add(target_artist)
     target_artist.connections.add(artist)
     return Response({'detail': 'Connection accepted.'}, status=status.HTTP_201_CREATED)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def reject_connection_request(request):
+    """
+    Reject a connection request from another artist.
+    """
+    try:
+        artist = Artist.objects.get(user=request.user)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    target_id = request.data.get('artist_id')
+    if not target_id:
+        return Response({'detail': 'artist_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    target_artist = get_object_or_404(Artist, id=target_id)
+    if target_artist == artist:
+        return Response({'detail': 'Cannot connect to yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    connection = Connection.objects.get(artist=target_artist, connected_artist=artist)
+    if connection.status != 'pending':
+        return Response({'detail': 'Connection request not found.'}, status=status.HTTP_404_NOT_FOUND)
+    connection.status = 'rejected'
+    connection.save()
+    return Response({'detail': 'Connection rejected.'}, status=status.HTTP_201_CREATED)
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
