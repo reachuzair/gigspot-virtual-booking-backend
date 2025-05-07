@@ -12,6 +12,7 @@ from .views import (
     update_gig_status,
     send_invite_request,
     accept_invite_request,
+    reject_invite_request,
     )
 
 urlpatterns = [
@@ -26,5 +27,6 @@ urlpatterns = [
     path('<int:id>/add-details/', add_gig_details, name='add_gig_details'),
     path('<int:id>/status/', update_gig_status, name='update_gig_status'),
     path('<int:id>/accept-invite/', accept_invite_request, name='accept_invite_request'),
+    path('<int:id>/reject-invite/', reject_invite_request, name='reject_invite_request'),
     path('<int:id>/invite/', send_invite_request, name='send_invite_request')
 ]
