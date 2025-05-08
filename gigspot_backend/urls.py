@@ -31,4 +31,5 @@ urlpatterns = [
     path('api/subscriptions/', include('subscriptions.urls')),
     path('api/services/', include('services.urls')),
     path('api/artists/', include('artists.urls')),
+    path('api/payments/', include('payments.urls'))
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
