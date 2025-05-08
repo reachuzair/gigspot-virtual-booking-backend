@@ -116,6 +116,8 @@ class Artist(models.Model):
     buzz_score = models.IntegerField(default=0)
     onFireStatus = models.BooleanField(default=False)
     connections = models.ManyToManyField('self', symmetrical=False, related_name='artist_connections')
+    stripe_account_id = models.CharField(max_length=255, blank=True, null=True, default=None)
+    stripe_onboarding_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -144,6 +146,8 @@ class Venue(models.Model):
     reservation_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     artist_capacity = models.IntegerField(default=0)
     is_completed = models.BooleanField(default=False)
+    stripe_account_id = models.CharField(max_length=255, blank=True, null=True, default=None)
+    stripe_onboarding_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
