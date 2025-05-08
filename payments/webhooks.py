@@ -7,6 +7,9 @@ from .models import Payment
 from custom_auth.models import Artist, Fan
 from gigs.models import Gig
 from .helpers import handle_account_update
+import logging
+
+logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @csrf_exempt
@@ -16,20 +19,26 @@ def stripe_webhook(request):
     event = None
 
     try:
+        logger.info('Stripe webhook received')
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
         )
     except ValueError as e:
+        logger.error('Stripe webhook error: %s', str(e))
         return Response({"error": str(e)}, status=400)
     except stripe.error.SignatureVerificationError as e:
+        logger.error('Stripe webhook error: %s', str(e))
         return Response({"error": str(e)}, status=400)
 
     # Handle specific events
     if event['type'] == 'payment_intent.succeeded':
+        logger.info('Payment intent succeeded')
         handle_payment_success(event['data']['object'])
     elif event['type'] == 'account.updated':
+        logger.info('Account updated')
         handle_account_update(event['data']['object'])
     elif event['type'] == 'payout.paid':
+        logger.info('Payout paid')
         handle_payout_paid(event['data']['object'])
 
     return Response({"status": "success"})
