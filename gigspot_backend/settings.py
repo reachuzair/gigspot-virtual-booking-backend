@@ -193,6 +193,7 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Your email address
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Your email password or app-specific password
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')  # Default sender email
 
+FRONTEND_URL = os.getenv('FRONTEND_URL')
 
 # Stripe Configuration
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')

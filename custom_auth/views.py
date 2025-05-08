@@ -8,6 +8,8 @@ from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import UserCreateSerializer, UserSerializer
 from utils.email import send_templated_email
 from django.utils import timezone
+from payments.utils import create_stripe_account
+from django.db import transaction
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,30 +19,47 @@ logger = logging.getLogger(__name__)
 def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            # Create the base user
-            user = serializer.save()
-            # Handle role-specific profile creation
-            role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
-            if role == ROLE_CHOICES.ARTIST:
-                Artist.objects.create(
-                    user=user,
-                )
-            elif role == ROLE_CHOICES.VENUE:
-                Venue.objects.create(
-                    user=user,
-                )
-            elif role == ROLE_CHOICES.FAN:  
-                Fan.objects.create(
-                    user=user,
-                )
-            return Response({
-                'user': UserSerializer(user).data,
-                'message': f'{role.capitalize()} account created successfully'
-            }, status=status.HTTP_201_CREATED)
-        else:
+        if not serializer.is_valid():
             return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        
+        role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
+        stripe_response = None
+        
+        # Start atomic transaction (DB + Stripe)
+        with transaction.atomic():
+            # 1. Create User
+            user = serializer.save()
+            
+            # 2. Create Role Profile (Artist/Venue/Fan)
+            if role == ROLE_CHOICES.ARTIST:
+                artist = Artist.objects.create(user=user)
+            elif role == ROLE_CHOICES.VENUE:
+                venue = Venue.objects.create(user=user)
+            elif role == ROLE_CHOICES.FAN:
+                Fan.objects.create(user=user)
+            
+            # 3. Create Stripe Account (if Artist/Venue)
+            if role in [ROLE_CHOICES.ARTIST, ROLE_CHOICES.VENUE]:
+                stripe_response = create_stripe_account(request, user)
+                if not stripe_response:
+                    raise Exception('Stripe account creation failed')
+                
+                # 4. Update Artist/Venue with Stripe ID
+                if role == ROLE_CHOICES.ARTIST:
+                    artist.stripe_account_id = stripe_response['stripe_account'].id
+                    artist.save()
+                else:
+                    venue.stripe_account_id = stripe_response['stripe_account'].id
+                    venue.save()
+        
+        return Response({
+            'user': UserSerializer(user).data,
+            'stripe_account': stripe_response['stripe_account'].id if stripe_response else None,
+            'link': stripe_response['link'].url if stripe_response else None,
+        }, status=status.HTTP_201_CREATED)
+        
     except Exception as e:
+        # Transaction will auto-rollback if any step fails
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
