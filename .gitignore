@@ -68,3 +68,6 @@ celerybeat.pid
 # Sentry files
 .sentryclirc
 
+# Cleanup script
+cleanup_orphaned_values.py
+
