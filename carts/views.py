@@ -1,13 +1,16 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from gigs.models import Gig
 from .models import CartItem
+from rest_framework.permissions import IsAuthenticated
+from .serializers import CartItemSerializer
 
 # Create your views here.
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def add_to_cart(request):
     user = request.user
     gig_id = request.data.get('gig_id')
@@ -23,4 +26,13 @@ def add_to_cart(request):
         return Response({'detail': 'Gig not found.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_cart_items(request):
+    user = request.user
+    cart_items = CartItem.objects.filter(user=user, is_booked=False)
+    serializer = CartItemSerializer(cart_items, many=True)
+    return Response(serializer.data)
+
