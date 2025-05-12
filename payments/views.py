@@ -20,7 +20,7 @@ def fetch_balance(request):
     
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def purchase_gig_ticket(request, gig_id):
+def create_payment_intent(request, gig_id):
     user = request.user
     
     if user.role != ROLE_CHOICES.FAN:
@@ -32,7 +32,8 @@ def purchase_gig_ticket(request, gig_id):
         artist_id = int(request.data.get('supporting_artist_id', 0))
         
         if artist_id == 0:
-            artist_id = gig.artist.id
+            artist = Artist.objects.get(user=gig.user)
+            artist_id = artist.id
 
         try:
             artist = Artist.objects.get(id=artist_id)
@@ -61,6 +62,9 @@ def purchase_gig_ticket(request, gig_id):
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
         })
-        
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
     except Gig.DoesNotExist:
-        return Response({"error": "Gig not found"}, status=404) 
+        return Response({"error": "Gig not found"}, status=404)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
