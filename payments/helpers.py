@@ -1,6 +1,7 @@
 from custom_auth.models import Artist, Fan
 from gigs.models import Gig
 from .models import Payment, Ticket, PaymentStatus
+from carts.models import CartItem
 
 def handle_account_update(account):
     artist = Artist.objects.get(stripe_account_id=account.id)
@@ -19,12 +20,15 @@ def handle_payment_intent_succeeded(payment_intent):
     if payment_intent_for == "ticket_purchase":
         gig_id = metadata['gig_id']
         fan_id = metadata['fan_id']
+        item_id = metadata['item_id']
         quantity = int(metadata['quantity'])
         supporting_artist_id = metadata['supporting_artist_id']
         gig = Gig.objects.get(id=gig_id)
         fan = Fan.objects.get(id=fan_id)
         artist = Artist.objects.get(id=supporting_artist_id)
-        
+        cart_item = CartItem.objects.get(id=item_id)
+        cart_item.is_booked = True
+        cart_item.save()        
         # Calculate per-ticket price
         total_amount = payment_intent['amount']
         price_per_ticket = total_amount / int(quantity) / 100  # Convert cents to dollars
