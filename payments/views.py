@@ -30,6 +30,7 @@ def create_payment_intent(request, gig_id):
         gig = Gig.objects.get(id=gig_id)
         quantity = int(request.data.get('quantity', 1))
         artist_id = int(request.data.get('supporting_artist_id', 0))
+        application_fee = int(request.data.get('application_fee', 0))
         
         if artist_id == 0:
             artist = Artist.objects.get(user=gig.user)
@@ -42,7 +43,7 @@ def create_payment_intent(request, gig_id):
         
         # Calculate amounts
         amount = gig.ticket_price * quantity * 100  # in cents
-        application_fee = int(amount * 0.1)  # 10% platform fee
+        application_fee = application_fee * 100  # in cents
         
         intent = stripe.PaymentIntent.create(
             amount=amount,
@@ -54,7 +55,9 @@ def create_payment_intent(request, gig_id):
             metadata={
                 "gig_id": gig.id,
                 "fan_id": user.id,
-                "quantity": quantity
+                "quantity": quantity,
+                "payment_intent_for": "ticket_purchase",
+                "supporting_artist_id": artist_id
             }
         )
         
