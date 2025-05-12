@@ -26,6 +26,7 @@ class Gig(models.Model):
     is_public = models.BooleanField(default=True)
     max_artist = models.IntegerField()
     max_tickets = models.IntegerField(default=100)
+    sold_out = models.BooleanField(default=False)
     ticket_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     genre = models.CharField(max_length=255, choices=GenreChoices.choices, default=GenreChoices.RAP)
     minimum_performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
