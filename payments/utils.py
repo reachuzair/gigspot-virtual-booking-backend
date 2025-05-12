@@ -54,4 +54,29 @@ def create_stripe_account(request, user, max_retries=3):
                 return None
             time.sleep(1)  # Wait before retrying
         
+
+
+import qrcode
+from io import BytesIO
+from django.core.files.base import ContentFile
+
+
+def create_qr_code(booking_code):
+    """
+    Generates a QR code image containing the booking_code and returns it as a Django ContentFile.
+    """
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(booking_code)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    file_name = f"qr_{booking_code}.png"
+    return ContentFile(buffer.getvalue(), name=file_name)
     
