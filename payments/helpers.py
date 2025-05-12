@@ -1,4 +1,6 @@
-from custom_auth.models import Artist
+from custom_auth.models import Artist, Fan
+from gigs.models import Gig
+from .models import Payment, Ticket, PaymentStatus
 
 def handle_account_update(account):
     artist = Artist.objects.get(stripe_account_id=account.id)
@@ -6,3 +8,45 @@ def handle_account_update(account):
     if account['charges_enabled'] and account['payouts_enabled']:
         artist.stripe_onboarding_completed = True
         artist.save()
+
+import uuid
+from payments.utils import create_qr_code
+
+def handle_payment_intent_succeeded(payment_intent):
+    metadata = payment_intent['metadata']
+    payment_intent_for = metadata['payment_intent_for']
+    
+    if payment_intent_for == "ticket_purchase":
+        gig_id = metadata['gig_id']
+        fan_id = metadata['fan_id']
+        quantity = int(metadata['quantity'])
+        supporting_artist_id = metadata['supporting_artist_id']
+        gig = Gig.objects.get(id=gig_id)
+        fan = Fan.objects.get(id=fan_id)
+        artist = Artist.objects.get(id=supporting_artist_id)
+        
+        # Calculate per-ticket price
+        total_amount = payment_intent['amount']
+        price_per_ticket = total_amount / int(quantity) / 100  # Convert cents to dollars
+
+        # Create tickets
+        for _ in range(int(quantity)):
+            booking_code = str(uuid.uuid4())
+            qr_code_image = create_qr_code(booking_code)
+            Ticket.objects.create(
+                booking_code=booking_code,
+                user=fan,
+                gig=gig,
+                qr_code=qr_code_image,
+                price=price_per_ticket
+            )
+        
+        # Record transaction
+        Payment.objects.create(
+            user=fan,
+            payee=artist,
+            amount=payment_intent['amount'] - payment_intent['application_fee_amount'],
+            fee=payment_intent['application_fee_amount'],
+            payment_intent_id=payment_intent['id'],
+            status=PaymentStatus.COMPLETED
+        )
