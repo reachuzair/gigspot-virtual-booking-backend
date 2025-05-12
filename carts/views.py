@@ -49,3 +49,18 @@ def remove_from_cart(request):
         return Response({'detail': 'Gig not found in cart.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_cart_item(request, cart_item_id):
+    user = request.user
+    quantity = request.data.get('quantity', 1)
+    try:
+        cart_item = CartItem.objects.get(user=user, id=cart_item_id, is_booked=False)
+        cart_item.quantity = quantity
+        cart_item.save()
+        return Response({'detail': 'Gig updated in cart successfully.', 'item': cart_item}, status=status.HTTP_200_OK)
+    except CartItem.DoesNotExist:
+        return Response({'detail': 'Cart item not found.'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
