@@ -6,6 +6,7 @@ from .models import Payment, PaymentStatus
 from django.db.models import Sum
 from gigs.models import Gig
 from rest_framework.permissions import IsAuthenticated
+from carts.models import CartItem
 
 # Create your views here.
 
@@ -31,6 +32,15 @@ def create_payment_intent(request, gig_id):
         quantity = int(request.data.get('quantity', 1))
         artist_id = int(request.data.get('supporting_artist_id', 0))
         application_fee = int(request.data.get('application_fee', 0))
+        item_id = int(request.data.get('item_id', 0))
+
+        if item_id == 0:
+            return Response({'detail': 'Cart item not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            cart_item = CartItem.objects.get(id=item_id)
+        except CartItem.DoesNotExist:
+            return Response({'detail': 'Cart item not found.'}, status=status.HTTP_404_NOT_FOUND)
         
         if artist_id == 0:
             artist = Artist.objects.get(user=gig.user)
@@ -57,7 +67,8 @@ def create_payment_intent(request, gig_id):
                 "fan_id": user.id,
                 "quantity": quantity,
                 "payment_intent_for": "ticket_purchase",
-                "supporting_artist_id": artist_id
+                "supporting_artist_id": artist_id,
+                "item_id": item_id,
             }
         )
         
@@ -71,3 +82,19 @@ def create_payment_intent(request, gig_id):
         return Response({"error": "Gig not found"}, status=404)
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_tickets(request, gig_id):
+    user = request.user
+    if user.role != ROLE_CHOICES.FAN:
+        return Response({'detail': 'Please login with fan account.'}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        gig = Gig.objects.get(id=gig_id)
+        tickets = Ticket.objects.filter(gig=gig, user=user)
+        return Response({'tickets': tickets}, status=status.HTTP_200_OK)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found.'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
