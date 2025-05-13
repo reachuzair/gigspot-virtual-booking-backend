@@ -589,6 +589,8 @@ def get_contract(request, contract_id):
 def sign_contract(request, contract_id):
     user = request.user
     contract_pin = request.data.get('contract_pin', None)
+    application_fee = int(request.data.get('application_fee', 0))
+    is_host = request.data.get('is_host', False)
     
     if not contract_pin:
         return Response({'detail': 'Contract pin is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -610,7 +612,32 @@ def sign_contract(request, contract_id):
     contract.signer = user
     contract.is_signed = True
     contract.save()
-    return Response({'detail': 'Contract signed successfully'}, status=status.HTTP_200_OK)
+    if user.role == ROLE_CHOICES.ARTIST:
+        # Calculate amounts
+        amount = contract.price * 100  # in cents
+        application_fee = application_fee * 100  # in cents
+        
+        intent = stripe.PaymentIntent.create(
+            amount=amount,
+            currency="usd",
+            application_fee_amount=application_fee,
+            transfer_data={
+                "destination": contract.venue.stripe_account_id,
+            },
+            metadata={
+                "contract_id": contract.id,
+                "payment_intent_for": "contract_signature",
+                "is_host": is_host
+            }
+        )
+        
+        return Response({
+            "client_secret": intent.client_secret,
+            "payment_intent_id": intent.id
+        })  
+        
+    
+    return Response({'detail': 'Contract signed successfully', }, status=status.HTTP_200_OK)
     
 
 @api_view(['POST'])
