@@ -2,6 +2,8 @@ from custom_auth.models import Artist, Fan
 from gigs.models import Gig
 from .models import Payment, Ticket, PaymentStatus
 from carts.models import CartItem
+from contracts.models import Contract
+from django.utils import timezone
 
 def handle_account_update(account):
     artist = Artist.objects.get(stripe_account_id=account.id)
@@ -54,3 +56,34 @@ def handle_payment_intent_succeeded(payment_intent):
             payment_intent_id=payment_intent['id'],
             status=PaymentStatus.COMPLETED
         )
+    
+    elif payment_intent_for == "contract_signature":
+        contract_id = metadata['contract_id']
+        contract = Contract.objects.get(id=contract_id)
+        contract.is_paid = True
+        contract.save()
+        
+        if metadata['is_host'] == 'true':
+            contract.artist_signed = True
+            contract.artist_signed_at = timezone.now()
+            contract.save()
+        else:
+            gig = contract.gig
+            artist = contract.artist
+            if artist.id in gig.invitees.values_list('id', flat=True):
+                contract.artist_signed = True
+                contract.artist_signed_at = timezone.now()
+                contract.save()
+                gig.invitees.remove(artist)
+                gig.collaborators.add(artist)
+                gig.save()
+            else:
+                contract.collaborator_signed = True
+                contract.collaborator_signed_at = timezone.now()
+                contract.save()
+                gig.collaborators.add(artist)
+                gig.save()
+            
+            
+                
+            
