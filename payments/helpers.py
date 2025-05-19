@@ -2,7 +2,7 @@ from custom_auth.models import Artist, Fan
 from gigs.models import Gig
 from .models import Payment, Ticket, PaymentStatus
 from carts.models import CartItem
-from contracts.models import Contract
+from gigs.models import Contract
 from django.utils import timezone
 
 def handle_account_update(account):
