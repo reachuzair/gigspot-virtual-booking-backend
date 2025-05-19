@@ -329,6 +329,36 @@ def add_gig_details(request, id):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def add_gig_venue_fee(request, id):
+    user = request.user
+
+    if user.role != ROLE_CHOICES.VENUE:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    try:
+        gig = Gig.objects.get(id=id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    data = request.data.copy()
+    venue_fee = data.get('venue_fee', user.venue.venue_fee)
+    
+    if venue_fee is None:
+        return Response({'detail': 'venue_fee value missing'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    gig.venue_fee = venue_fee
+    gig.save()
+    
+    serializer = GigSerializer(gig)
+    
+    create_notification(request.user, 'system', 'Gig venue fee updated successfully', **gig.__dict__)
+    return Response({
+        'gig': serializer.data,
+        'message': 'Gig venue fee updated successfully'
+    }, status=status.HTTP_201_CREATED)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_gig_status(request, id):

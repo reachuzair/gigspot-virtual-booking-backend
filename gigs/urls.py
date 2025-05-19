@@ -13,7 +13,8 @@ from .views import (
     send_invite_request,
     accept_invite_request,
     reject_invite_request,
-    )
+    add_gig_venue_fee,
+        )
 
 urlpatterns = [
     path('', get_gigs, name='get_gigs'),
@@ -28,5 +29,6 @@ urlpatterns = [
     path('<int:id>/status/', update_gig_status, name='update_gig_status'),
     path('<int:id>/accept-invite/', accept_invite_request, name='accept_invite_request'),
     path('<int:id>/reject-invite/', reject_invite_request, name='reject_invite_request'),
-    path('<int:id>/invite/', send_invite_request, name='send_invite_request')
+    path('<int:id>/invite/', send_invite_request, name='send_invite_request'),
+    path('<int:id>/venue-fee/', add_gig_venue_fee, name='add_gig_venue_fee'),
 ]
