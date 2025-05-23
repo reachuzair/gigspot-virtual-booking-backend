@@ -9,17 +9,17 @@ if not settings.configured:
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gigspot_backend.settings')
 
 class ChatConsumer(AsyncWebsocketConsumer):
-    print("ChatConsumer initialized")
+    # print("ChatConsumer initialized")
     async def connect(self):    
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_name = f'chat_{self.room_id}'
-        print(f"Connecting to room: {self.room_group_name}")
+        # print(f"Connecting to room: {self.room_group_name}")
         if self.scope["user"].is_anonymous:
-            print("Anonymous user trying to connect")
+            # print("Anonymous user trying to connect")
             await self.close()
             return
         
-        print("Authenticated user connecting")
+        # print("Authenticated user connecting")
         self.user = self.scope["user"]
         self.room_id = self.scope['url_route']['kwargs']['room_id']
         self.room_group_name = f'chat_{self.room_id}'
@@ -78,8 +78,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def save_message(self, content):
+        room = ChatRoom.objects.get(id=self.room_id)
+
+        receiver = None
+        if room.room_type == 'private':
+            # The only other participant besides the sender
+            receiver = room.participants.exclude(id=self.user.id).first()
+
         return Message.objects.create(
-            chat_room_id=self.room_id,
+            chat_room=room,
             sender=self.user,
+            receiver=receiver,
             content={"text": content}
-        )
+    )
