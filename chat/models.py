@@ -3,7 +3,7 @@ from django.conf import settings
 
 class ChatRoom(models.Model):
     ROOM_TYPE_CHOICES = (
-        ('one_to_one', 'One-to-One'),
+        ('private', 'Private'),
         ('group', 'Group'),
     )
 
