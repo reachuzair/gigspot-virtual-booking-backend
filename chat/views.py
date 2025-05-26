@@ -1,10 +1,12 @@
 
 from rest_framework import generics, permissions
-from .models import ChatRoom
+from .models import ChatRoom, Message
 from .serializers import ChatRoomSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
+from django.core.paginator import Paginator
+
 
 User = get_user_model()
 
@@ -64,3 +66,55 @@ class CreateChatRoomView(APIView):
             'participants': list(room.participants.values('id', 'name'))
         }, status=201)
 
+
+class MessageListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, room_id):
+        try:
+            room = ChatRoom.objects.get(id=room_id)
+        except ChatRoom.DoesNotExist:
+            return Response({"detail": "Chat room not found."}, status=404)
+
+        if request.user not in room.participants.all():
+            return Response({"detail": "You are not a participant of this chat room."}, status=403)
+
+        messages = Message.objects.filter(chat_room=room).order_by('-created_at')
+
+        # Optional: pagination
+        page = int(request.GET.get('page', 1))
+        per_page = int(request.GET.get('page_size', 20))
+        paginator = Paginator(messages, per_page)
+        page_obj = paginator.get_page(page)
+
+        serialized_messages = [{
+            'id': msg.id,
+            'sender_id': msg.sender.id,
+            'sender_username': msg.sender.name,
+            'receiver_id': msg.receiver.id if msg.receiver else None,
+            'content': msg.content,
+            'timestamp': msg.timestamp,
+            'is_read': msg.is_read,
+        } for msg in page_obj]
+
+        return Response({
+            "messages": serialized_messages,
+            "total": paginator.count,
+            "page": page,
+            "pages": paginator.num_pages,
+        })
+
+class DeleteMessageView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, message_id):
+        try:
+            message = Message.objects.get(id=message_id)
+        except Message.DoesNotExist:
+            return Response({"detail": "Message not found."}, status=404)
+
+        if message.sender != request.user:
+            return Response({"detail": "You can only delete your own messages."}, status=403)
+
+        message.delete()
+        return Response({"detail": "Message deleted successfully."}, status=204)
