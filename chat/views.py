@@ -1,19 +1,13 @@
 
 from rest_framework import generics, permissions
-from .models import ChatRoom, Message
+from .models import ChatRoom, Message, MessageReadStatus
 from .serializers import ChatRoomSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
 
-
 User = get_user_model()
-
-class ChatRoomCreateView(generics.CreateAPIView):
-    queryset = ChatRoom.objects.all()
-    serializer_class = ChatRoomSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
 class CreateChatRoomView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -105,16 +99,69 @@ class MessageListView(APIView):
         })
 
 class DeleteMessageView(APIView):
+    
     permission_classes = [permissions.IsAuthenticated]
 
-    def delete(self, request, message_id):
-        try:
-            message = Message.objects.get(id=message_id)
-        except Message.DoesNotExist:
-            return Response({"detail": "Message not found."}, status=404)
+    def delete(self, request):
+        message_ids = request.data.get("message_ids", [])
 
-        if message.sender != request.user:
-            return Response({"detail": "You can only delete your own messages."}, status=403)
+        if not isinstance(message_ids, list) or not all(isinstance(i, int) for i in message_ids):
+            return Response({"detail": "message_ids must be a list of integers."}, status=400)
 
-        message.delete()
-        return Response({"detail": "Message deleted successfully."}, status=204)
+        # Get messages sent by the user
+        user_messages = Message.objects.filter(id__in=message_ids, sender=request.user)
+
+        if not user_messages.exists():
+            return Response({"detail": "No messages found to delete or you don't own them."}, status=404)
+
+        deleted_count = user_messages.count()
+        user_messages.delete()
+
+        return Response({"detail": f"{deleted_count} messages deleted successfully."}, status=204)
+
+
+class InboxView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Get all rooms the user participates in
+        rooms = ChatRoom.objects.filter(participants=user).distinct()
+
+        room_list = []
+
+        for room in rooms:
+            # Get last message
+            last_message = (
+                room.messages.order_by("-created_at").first()
+            )
+
+            # Count unread messages
+            unread_count = MessageReadStatus.objects.filter(
+                message__chat_room=room,
+                user=user,
+                is_read=False
+            ).count()
+
+            # For private room, find the other participant
+            other_user = None
+            if room.room_type == 'private':
+                others = room.participants.exclude(id=user.id)
+                other_user = others.first().name if others.exists() else None
+
+            room_list.append({
+                "room_id": room.id,
+                "room_name": room.name if room.name else f"Chat {room.id}",
+                "room_type": room.room_type,
+                "other_user": other_user,
+                "last_message": {
+                    "id": last_message.id,
+                    "text": last_message.content.get("text", "") if last_message else "",
+                    "sender": last_message.sender.name if last_message else "",
+                    "timestamp": last_message.timestamp if last_message else None,
+                } if last_message else None,
+                "unread_count": unread_count,
+            })
+
+        return Response(room_list, status=200)
