@@ -1,12 +1,15 @@
 
 from rest_framework import generics, permissions
 from .models import ChatRoom, Message, MessageReadStatus
-from .serializers import ChatRoomSerializer
+from .serializers import ChatRoomSerializer, MessageSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
-from django.core.paginator import Paginator
 from django.utils.timezone import now
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.pagination import PageNumberPagination
+from django.core.cache import cache
+from django.shortcuts import get_object_or_404
 
 
 User = get_user_model()
@@ -63,42 +66,48 @@ class CreateChatRoomView(APIView):
         }, status=201)
 
 
-class MessageListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_messages(request, room_id):
+    try:
+        room = ChatRoom.objects.get(id=room_id)
+    except ChatRoom.DoesNotExist:
+        return Response({"detail": "Chat room not found."}, status=404)
 
-    def get(self, request, room_id):
-        try:
-            room = ChatRoom.objects.get(id=room_id)
-        except ChatRoom.DoesNotExist:
-            return Response({"detail": "Chat room not found."}, status=404)
+    if request.user not in room.participants.all():
+        return Response({"detail": "You are not a participant of this chat room."}, status=403)
 
-        if request.user not in room.participants.all():
-            return Response({"detail": "You are not a participant of this chat room."}, status=403)
+    page = int(request.query_params.get('page', 1))
+    per_page = int(request.query_params.get('page_size', 20))
 
-        messages = Message.objects.filter(chat_room=room).order_by('-created_at')
-
-        # Optional: pagination
-        page = int(request.GET.get('page', 1))
-        per_page = int(request.GET.get('page_size', 20))
-        paginator = Paginator(messages, per_page)
-        page_obj = paginator.get_page(page)
-
-        serialized_messages = [{
-            'id': msg.id,
-            'sender_id': msg.sender.id,
-            'sender_username': msg.sender.name,
-            'receiver_id': msg.receiver.id if msg.receiver else None,
-            'content': msg.content,
-            'timestamp': msg.timestamp,
-            'is_read': msg.is_read,
-        } for msg in page_obj]
-
+    cache_key = f"messages_{request.user.id}_room_{room_id}_page_{page}_per_{per_page}"
+    cached_data = cache.get(cache_key)
+    if cached_data:
         return Response({
-            "messages": serialized_messages,
-            "total": paginator.count,
-            "page": page,
-            "pages": paginator.num_pages,
+            "count": cached_data['count'],
+            "next": cached_data['next'],
+            "previous": cached_data['previous'],
+            "results": cached_data['results'],
         })
+
+    messages = Message.objects.filter(chat_room=room).order_by('-created_at')
+    paginator = PageNumberPagination()
+    paginator.page_size = per_page
+    result_page = paginator.paginate_queryset(messages, request)
+
+    serializer = MessageSerializer(result_page, many=True)
+    paginated_response = paginator.get_paginated_response(serializer.data)
+
+    # Cache the entire response payload
+    cache.set(cache_key, {
+        "count": paginated_response.data['count'],
+        "next": paginated_response.data['next'],
+        "previous": paginated_response.data['previous'],
+        "results": paginated_response.data['results'],
+    }, timeout=60 * 5)
+
+    return paginated_response
+
 
 class DeleteMessageView(APIView):
     

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ChatRoom
+from .models import ChatRoom, Message
 from django.conf import settings
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -19,4 +19,12 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         room = ChatRoom.objects.create(**validated_data)
         room.participants.set(participants)
         return room
- 
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.name', read_only=True)
+    receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'sender_id', 'sender_username', 'receiver_id', 'content', 'timestamp', 'is_read']
