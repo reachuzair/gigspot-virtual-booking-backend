@@ -3,7 +3,7 @@ import os
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf  import settings
-from .models import ChatRoom, Message
+from .models import ChatRoom, Message, MessageReadStatus
 
 if not settings.configured:
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gigspot_backend.settings')
@@ -80,14 +80,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def save_message(self, content):
         room = ChatRoom.objects.get(id=self.room_id)
 
-        receiver = None
-        if room.room_type == 'private':
-            # The only other participant besides the sender
-            receiver = room.participants.exclude(id=self.user.id).first()
-
-        return Message.objects.create(
+        message = Message.objects.create(
             chat_room=room,
             sender=self.user,
-            receiver=receiver,
             content={"text": content}
-    )
+        )
+
+        if room.room_type == 'private':
+            # Set the receiver as the only other participant
+            receiver = room.participants.exclude(id=self.user.id).first()
+            message.receiver = receiver
+            message.save(update_fields=["receiver"])
+            
+        else:
+            # Group chat — set read status for each recipient
+            participants = room.participants.exclude(id=self.user.id)
+            read_status_objs = [
+                MessageReadStatus(message=message, user=user)
+                for user in participants
+            ]
+            MessageReadStatus.objects.bulk_create(read_status_objs)
+
+        return message
+

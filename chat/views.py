@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
+from django.utils.timezone import now
+
 
 User = get_user_model()
 
@@ -165,3 +167,44 @@ class InboxView(APIView):
             })
 
         return Response(room_list, status=200)
+
+class MarkMessagesAsReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        message_ids = request.data.get("message_ids", [])
+
+        if not isinstance(message_ids, list) or not all(isinstance(i, int) for i in message_ids):
+            return Response({"detail": "message_ids must be a list of integers."}, status=400)
+
+        user = request.user
+        updated = 0
+
+        messages = Message.objects.filter(id__in=message_ids)
+
+        for message in messages:
+            # Group chat or private chat with receiver
+            if message.chat_room.room_type == "group":
+                # Only update per-user status for group messages
+                obj, created = MessageReadStatus.objects.update_or_create(
+                    message=message,
+                    user=user,
+                    defaults={"is_read": True, "read_at": now()}
+                )
+                updated += 1
+
+            elif message.receiver == user:
+                # Private chat: update both per-message and per-user read status
+                if not message.is_read:
+                    message.is_read = True
+                    message.save(update_fields=["is_read"])
+
+                obj, created = MessageReadStatus.objects.update_or_create(
+                    message=message,
+                    user=user,
+                    defaults={"is_read": True, "read_at": now()}
+                )
+                updated += 1
+
+        return Response({"detail": f"{updated} messages marked as read."}, status=200)
+
