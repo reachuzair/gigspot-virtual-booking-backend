@@ -35,11 +35,11 @@ class ROLE_CHOICES(models.TextChoices):
     FAN = 'fan', 'Fan'
 
 def user_profile_image_path(instance, filename):
-    # Generate a unique filename using username and timestamp
+    # Generate a unique filename using name and timestamp
     import time
     timestamp = int(time.time())
     extension = filename.split('.')[-1].lower()
-    new_filename = f"{slugify(instance.username)}_{timestamp}.{extension}"
+    new_filename = f"{slugify(instance.name)}_{timestamp}.{extension}"
     return f'profile_images/{new_filename}'
 
 class User(AbstractBaseUser, PermissionsMixin):

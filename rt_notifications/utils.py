@@ -18,7 +18,7 @@ def create_notification(user, notification_type, message, **kwargs):
             verb=message,
             **kwargs
         )
-
+        # print(f"Notification sent to {user.name}: {message}")
         # Send real-time notification via WebSocket
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
@@ -33,6 +33,7 @@ def create_notification(user, notification_type, message, **kwargs):
                 },
             }
         )
-    
+    # print(f"Notification created for {user.name}: {message}")
     if user.settings.notify_by_email:
         send_notify_templated_email(user.email, notification_type, message, **kwargs)
+        print(f"Email notification sent to {user.email}: {message}")
