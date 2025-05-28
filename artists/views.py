@@ -21,9 +21,9 @@ def list_artists(request):
         user_tier = None
     search_query = request.query_params.get('search', '')
     if search_query:
-        queryset = Artist.objects.filter(Q(band_name__icontains=search_query) | Q(user__name__icontains=search_query) | Q(user__email__icontains=search_query))
+        queryset = Artist.objects.select_related('user').filter(Q(band_name__icontains=search_query) | Q(user__name__icontains=search_query) | Q(user__email__icontains=search_query))
     else:
-        queryset = Artist.objects.all()
+        queryset = Artist.objects.select_related('user').all()
     # Exclude the requesting artist
     queryset = queryset.exclude(user=user)
 
