@@ -88,7 +88,7 @@ class ArtistSubscription(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.artist.user.username} - {self.plan}"
+        return f"{self.artist.user.name} - {self.plan}"
 
     def update_from_stripe(self):
         """Sync with Stripe subscription data"""

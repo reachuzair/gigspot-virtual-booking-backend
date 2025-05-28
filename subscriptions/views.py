@@ -65,7 +65,7 @@ def create_artist_subscription(request):
         # Create or retrieve Stripe customer
         customer_data = {
             'email': user.email,
-            'name': user.name if user.name else user.username,
+            'name': user.name if user.name else user.name,
             'payment_method': payment_method,
             'invoice_settings': {'default_payment_method': payment_method},
             'metadata': {'artist_id': artist.id}
@@ -184,7 +184,7 @@ def test_create_artist_subscription(request):
         # Step 2: Create/update Stripe Customer
         customer_data = {
             'email': user.email,
-            'name': user.name if user.name else user.username,
+            'name': user.name if user.name else user.name,
             'payment_method': payment_method.id,
             'invoice_settings': {'default_payment_method': payment_method.id},
             'metadata': {'artist_id': artist.id}

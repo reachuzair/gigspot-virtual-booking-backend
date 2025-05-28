@@ -36,6 +36,7 @@ ALLOWED_HOSTS = [
     '16.171.237.96', 
     '0.0.0.0', 
     '172.31.31.43', 
+    '9c0e-39-38-195-254.ngrok-free.app',
     'app.gigspotvb.com'
 ]
 
@@ -61,7 +62,8 @@ INSTALLED_APPS = [
     'services',
     'connections',
     'payments',
-    'carts'
+    'carts',
+    'chat',
 ]
 
 REST_FRAMEWORK = {

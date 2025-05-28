@@ -1,4 +1,4 @@
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,7 +8,8 @@ from .models import UserSettings
 from rt_notifications.utils import create_notification
 from django.forms.models import model_to_dict
 from django.core.files.storage import default_storage
-
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.shortcuts import get_object_or_404
 # Create your views here.
 
 @api_view(['GET'])
@@ -50,16 +51,17 @@ def user_profile(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
 def update_profile_image(request):
     try:
         user = request.user
-        
+        print(f"User: {user.name}, ID: {user.id}")
         # Check if file is in request.FILES
         if 'profileImage' not in request.FILES:
             return Response({"detail": "No image file provided"}, status=status.HTTP_400_BAD_REQUEST)
         
         image_file = request.FILES['profileImage']
-        
+        print(f"Received file: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
         # Validate file type
         allowed_types = ['image/jpeg', 'image/png', 'image/gif']
         if image_file.content_type not in allowed_types:
@@ -70,11 +72,12 @@ def update_profile_image(request):
         if image_file.size > 5 * 1024 * 1024:  # 5MB
             return Response({"detail": "Image file too large. Maximum size is 5MB."},
                            status=status.HTTP_400_BAD_REQUEST)
-        
+        print(f"Image file is valid: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
         # Save the image
         user.profileImage = image_file
+        print(f"Saving profile image for user: {user.name}, ID: {user.id}")
         user.save()
-        
+        print(f"Profile image updated for user: {user.name}, ID: {user.id}")
         create_notification(user, 'system', 'Profile Image Updated', description='You have successfully updated your profile image.')
         return Response({
             "detail": "Profile image updated successfully",
@@ -123,16 +126,16 @@ def update_user_profile(request):
         if not key or not value:
             return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        allowed_keys = ['name', 'username']
+        allowed_keys = ['name', 'name']
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
         if key == 'name':
             user.name = value
-        elif key == 'username':
-            if User.objects.filter(username=value).exists():
+        elif key == 'name':
+            if User.objects.filter(name=value).exists():
                 return Response({"detail": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
-            user.username = value
+            user.name = value
         else:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
         
