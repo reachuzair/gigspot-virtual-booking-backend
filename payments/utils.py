@@ -19,7 +19,7 @@ def create_stripe_account(request, user, max_retries=3):
                 "business_type": "individual",  # Required for most cases
                 "individual": {
                     "first_name": user.name.split(" ")[0],  # Highly recommended
-                    "last_name": user.name.split(" ")[1],    # Highly recommended
+                    "last_name": user.name.split(" ")[1] if len(user.name.split(" ")) > 1 else "",
                     "email": user.email,
                 },
                 "business_profile": {

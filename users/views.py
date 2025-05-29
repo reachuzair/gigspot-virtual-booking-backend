@@ -20,7 +20,8 @@ def user_profile(request):
         response_data = {
             'id': user.id,
             'email': user.email,
-            'role': user.role
+            'role': user.role,
+            "profileImage": user.profileImage.url if user.profileImage else None
         }
         
         def get_artist_data(artist):
@@ -30,8 +31,11 @@ def user_profile(request):
             return artist_data
             
         def get_venue_data(venue):
-            venue_data = model_to_dict(venue, exclude=['verification_docs'])
+            venue_data = model_to_dict(venue, exclude=['verification_docs', 'seating_plan'])
             venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
+            venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan else None
+
+
             return venue_data
             
         if user.role == ROLE_CHOICES.ARTIST:

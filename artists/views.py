@@ -50,17 +50,11 @@ def list_artists(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_artist(request, artist_id):
-    from gigs.models import Gig
-    from gigs.serializers import GigSerializer
     try:
         artist = Artist.objects.get(id=artist_id)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
-    # Serialize artist data
+
     artist_serializer = ArtistSerializer(artist)
-    # Get gigs for this artist
-    gigs = Gig.objects.filter(artist=artist)
-    gigs_serializer = GigSerializer(gigs, many=True)
     response_data = artist_serializer.data
-    response_data['gigs'] = gigs_serializer.data
     return Response(response_data)
