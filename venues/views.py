@@ -199,3 +199,8 @@ class VenueListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     search_fields = ['venue_name', 'venue_email', 'venue_phone']
     ordering_fields = ['created_at', 'updated_at', 'capacity']
+
+class VenueDetailView(generics.RetrieveAPIView):
+    queryset = Venue.objects.all()
+    serializer_class = VenueProfileSerializer
+    lookup_field = 'id'
