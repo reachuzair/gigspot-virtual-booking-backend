@@ -18,8 +18,8 @@ class GenreChoices(models.TextChoices):
 class Gig(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
-    booking_start_date = models.DateTimeField()
-    booking_end_date = models.DateTimeField()
+    booking_start_date = models.DateTimeField(null=True, blank=True)
+    booking_end_date = models.DateTimeField(null=True, blank=True)
     event_date = models.DateTimeField(default=timezone.now)
     description = models.TextField()
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)

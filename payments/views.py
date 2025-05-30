@@ -1,31 +1,29 @@
-from rest_framework.response import Response
+import logging
+import stripe
+from django.conf import settings
 from rest_framework import status
-from custom_auth.models import ROLE_CHOICES, Artist, Venue
 from rest_framework.decorators import api_view, permission_classes
-from .models import Payment, PaymentStatus
-from django.db.models import Sum
-from gigs.models import Gig
 from rest_framework.permissions import IsAuthenticated
-from carts.models import CartItem
+from rest_framework.response import Response
 
-# Create your views here.
+from gigs.models import Gig
 
-@api_view(['GET'])
-def fetch_balance(request):
-    user = request.user
-    if user.role != ROLE_CHOICES.ARTIST and user.role != ROLE_CHOICES.VENUE:
-        return Response({"detail": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-    
-    balance = Payment.objects.filter(user=user, status=PaymentStatus.COMPLETED).aggregate(total_balance=Sum('amount'))['total_balance']
-    return Response({"balance": balance})
-    
+# Set up logging
+logger = logging.getLogger(__name__)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_payment_intent(request, gig_id):
+    """
+    Create a payment intent for purchasing tickets to a gig.
+    """
     user = request.user
     
-    if user.role != ROLE_CHOICES.FAN:
-        return Response({'detail': 'Please login with fan account.'}, status=status.HTTP_401_UNAUTHORIZED)
+    if user.role != 'FAN':  # Assuming ROLE_CHOICES.FAN is 'FAN'
+        return Response(
+            {'detail': 'Please login with fan account.'}, 
+            status=status.HTTP_401_UNAUTHORIZED
+        )
     
     try:
         gig = Gig.objects.get(id=gig_id)
@@ -35,26 +33,34 @@ def create_payment_intent(request, gig_id):
         item_id = int(request.data.get('item_id', 0))
 
         if item_id == 0:
-            return Response({'detail': 'Cart item not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'detail': 'Cart item not found.'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
         
-        try:
-            cart_item = CartItem.objects.get(id=item_id)
-        except CartItem.DoesNotExist:
-            return Response({'detail': 'Cart item not found.'}, status=status.HTTP_404_NOT_FOUND)
-        
+        # If no specific artist is provided, use the gig's artist
         if artist_id == 0:
-            artist = Artist.objects.get(user=gig.user)
+            artist = gig.user.artist
+            if not artist:
+                return Response(
+                    {'detail': 'Artist not found for this gig.'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
             artist_id = artist.id
-
-        try:
-            artist = Artist.objects.get(id=artist_id)
-        except Artist.DoesNotExist:
-            return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            try:
+                artist = Artist.objects.get(id=artist_id)
+            except Artist.DoesNotExist:
+                return Response(
+                    {'detail': 'Artist not found.'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
         
-        # Calculate amounts
-        amount = gig.ticket_price * quantity * 100  # in cents
-        application_fee = application_fee * 100  # in cents
+        # Calculate amounts (in cents)
+        amount = int(gig.ticket_price * quantity * 100)
+        application_fee = int(application_fee * 100)
         
+        # Create the payment intent
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency="usd",
@@ -76,25 +82,63 @@ def create_payment_intent(request, gig_id):
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
         })
-    except Artist.DoesNotExist:
-        return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
+        
     except Gig.DoesNotExist:
-        return Response({"error": "Gig not found"}, status=404)
+        return Response(
+            {"error": "Gig not found"}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Error creating payment intent: {str(e)}")
+        return Response(
+            {'detail': 'An error occurred while creating the payment intent.'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_tickets(request, gig_id):
-    user = request.user
-    if user.role != ROLE_CHOICES.FAN:
-        return Response({'detail': 'Please login with fan account.'}, status=status.HTTP_401_UNAUTHORIZED)
+    """
+    List all tickets for a specific gig for the authenticated user.
+    """
     try:
+        # Get the gig
         gig = Gig.objects.get(id=gig_id)
-        tickets = Ticket.objects.filter(gig=gig, user=user)
-        return Response({'tickets': tickets}, status=status.HTTP_200_OK)
+        
+        # Get tickets for this user and gig
+        tickets = Ticket.objects.filter(
+            gig=gig,
+            user=request.user
+        )
+        
+        # Serialize the tickets
+        ticket_data = [
+            {
+                'id': ticket.id,
+                'gig_id': ticket.gig.id,
+                'gig_title': ticket.gig.title,
+                'purchase_date': ticket.purchase_date,
+                'status': ticket.status,
+                'ticket_type': ticket.ticket_type,
+                'price': ticket.price,
+                'qr_code': ticket.qr_code.url if ticket.qr_code else None
+            }
+            for ticket in tickets
+        ]
+        
+        return Response({
+            'count': len(ticket_data),
+            'tickets': ticket_data
+        })
+        
     except Gig.DoesNotExist:
-        return Response({'detail': 'Gig not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {'detail': 'Gig not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        logger.error(f'Error listing tickets: {str(e)}')
+        return Response(
+            {'detail': 'An error occurred while fetching tickets.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
