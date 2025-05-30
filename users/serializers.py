@@ -1,5 +1,8 @@
 from rest_framework import serializers
 from custom_auth.models import User, Artist, Venue, Fan
+from custom_auth.serializers import UserSerializer
+
+
 class ArtistProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artist
@@ -8,10 +11,16 @@ class ArtistProfileSerializer(serializers.ModelSerializer):
 
 
 class VenueProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
     class Meta:
         model = Venue
-        fields = '__all__'
-        read_only_fields = ['user', 'created_at', 'updated_at']
+        fields = [
+            'id', 'verification_docs', 'location', 'capacity', 'amenities',
+            'seating_plan', 'reservation_fee', 'artist_capacity', 'is_completed',
+            'stripe_account_id', 'stripe_onboarding_completed', 'created_at',
+            'updated_at', 'user', 'adress'
+        ]
 
 
 class FanProfileSerializer(serializers.ModelSerializer):
