@@ -25,17 +25,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-g8=z0v@=7iefqblfjn^2=vn_4g-#7o4t=n48!l97_64w=k+)nl')
+SECRET_KEY = os.getenv(
+    'SECRET_KEY', 'django-insecure-g8=z0v@=7iefqblfjn^2=vn_4g-#7o4t=n48!l97_64w=k+)nl')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = [
-    'localhost', 
-    '127.0.0.1', 
-    '16.171.237.96', 
-    '0.0.0.0', 
-    '172.31.31.43', 
+    'localhost',
+    '127.0.0.1',
+    '16.171.237.96',
+    '0.0.0.0',
+    '172.31.31.43',
     '9c0e-39-38-195-254.ngrok-free.app',
     'app.gigspotvb.com'
 ]
@@ -64,6 +65,7 @@ INSTALLED_APPS = [
     'payments',
     'carts',
     'chat',
+    'venues',
 ]
 
 REST_FRAMEWORK = {
@@ -73,6 +75,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10
 }
@@ -113,7 +116,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('172.18.53.80', 6379)],
+            "hosts": [('127.0.0.1', 6379)],
         },
     },
 }
@@ -193,7 +196,8 @@ EMAIL_HOST = os.getenv('EMAIL_HOST')  # e.g., smtp.gmail.com, smtp.sendgrid.net
 EMAIL_PORT = 587  # Typically 587 for TLS, 465 for SSL
 EMAIL_USE_TLS = True  # Use TLS (or EMAIL_USE_SSL = True for SSL)
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # Your email address
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Your email password or app-specific password
+# Your email password or app-specific password
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')  # Default sender email
 
 FRONTEND_URL = os.getenv('FRONTEND_URL')

@@ -119,7 +119,6 @@ class Artist(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     full_name = models.CharField(max_length=255, blank=True, null=True)
-    personal_email = models.EmailField(blank=True, null=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     verification_docs = models.FileField(
         upload_to='artist_verification_docs', blank=True, null=True)
@@ -165,11 +164,6 @@ class Artist(models.Model):
 class Venue(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    venue_name = models.CharField(max_length=255, blank=True, null=True)
-    venue_email = models.EmailField(blank=True, null=True)
-    venue_phone = models.CharField(max_length=20, blank=True, null=True)
-    venue_seating_blueprint = models.ImageField(
-        upload_to='venue_seating_blueprint', blank=True, null=True)
     verification_docs = models.FileField(
         upload_to='venue_verification_docs', blank=True, null=True)
     location = models.JSONField(default=list)
@@ -194,10 +188,6 @@ class Venue(models.Model):
 class Fan(models.Model):
     id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    full_name = models.CharField(max_length=255, blank=True, null=True)
-    email = models.EmailField(blank=True, null=True)
-    phone_number = models.CharField(max_length=20, blank=True, null=True)
-    country = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
