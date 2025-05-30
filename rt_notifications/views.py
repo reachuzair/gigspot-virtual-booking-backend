@@ -1,5 +1,5 @@
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action,permission_classes
+from rest_framework.decorators import action, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -8,11 +8,15 @@ from asgiref.sync import async_to_sync
 from .models import Notification
 from .serializers import NotificationSerializer
 
+
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def list_notifications(request):
-    notifications = Notification.objects.filter(recipient=request.user).order_by('-created_at')  # optional: newest first
-
+    notifications = Notification.objects.filter(
+        # optional: newest first
+        recipient=request.user.id).order_by('-created_at')
     paginator = PageNumberPagination()
     paginated_qs = paginator.paginate_queryset(notifications, request)
     serializer = NotificationSerializer(paginated_qs, many=True)
@@ -23,7 +27,10 @@ def list_notifications(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def create_notification(request):
-    serializer = NotificationSerializer(data=request.data)
+    data = request.data.copy()
+    # Ensure recipient is set to the current user
+    data['recipient'] = request.user.id
+    serializer = NotificationSerializer(data=data)
     if serializer.is_valid():
         notification = serializer.save(recipient=request.user)
         _send_notification_to_websocket(notification)
@@ -49,5 +56,3 @@ def _send_notification_to_websocket(notification):
             'notification': notification_data
         }
     )
-
-    
