@@ -34,16 +34,17 @@ def signup(request):
             if role == ROLE_CHOICES.ARTIST:
                 artist = Artist.objects.create(user=user)
             elif role == ROLE_CHOICES.VENUE:
+               
                 venue = Venue.objects.create(user=user)
             elif role == ROLE_CHOICES.FAN:
                 Fan.objects.create(user=user)
-            
+            print("User created:", user)
             # 3. Create Stripe Account (if Artist/Venue)
             if role in [ROLE_CHOICES.ARTIST, ROLE_CHOICES.VENUE]:
                 stripe_response = create_stripe_account(request, user)
                 if not stripe_response:
                     raise Exception('Stripe account creation failed')
-                
+                print("Stripe response:", stripe_response)
                 # 4. Update Artist/Venue with Stripe ID
                 if role == ROLE_CHOICES.ARTIST:
                     artist.stripe_account_id = stripe_response['stripe_account'].id
@@ -51,6 +52,7 @@ def signup(request):
                 else:
                     venue.stripe_account_id = stripe_response['stripe_account'].id
                     venue.save()
+                    
         
         return Response({
             'user': UserSerializer(user).data,

@@ -9,9 +9,10 @@ class VenueSerializer(serializers.ModelSerializer):
         fields = ['id']
 
 class GigSerializer(serializers.ModelSerializer):
-    venue = VenueSerializer(read_only=True)
+    # venue = VenueSerializer()
     flyer_bg_url = serializers.SerializerMethodField()
     user = serializers.PrimaryKeyRelatedField(read_only=True)
+    is_approved = serializers.BooleanField(default=False, read_only=True)
 
     class Meta:
         model = Gig
@@ -47,7 +48,7 @@ class GigSerializer(serializers.ModelSerializer):
         return None
 
     def create(self, validated_data):
-        request = self.context.get('request')
+        request = self.context
         user = request.user if request else None
         gig = Gig.objects.create(user=user, **validated_data)
         return gig

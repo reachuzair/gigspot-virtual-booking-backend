@@ -237,16 +237,20 @@ def initiate_gig(request):
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     data = request.data.copy()
-    venue_id = data.get('venue', None)
+    print("data:", data)
+    venue_id = data.get('venue_id', None)
     
     try:
         venue = Venue.objects.get(id=venue_id)
+        print("venue:", venue)
     except Venue.DoesNotExist:
         return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    data['venue'] = venue
+    data['venue'] = venue.id
     data['user'] = user
-    serializer = GigSerializer(gig, data=data, partial=True)
+    if not data.get('max_artist'):
+        data['max_artist'] = venue.artist_capacity
+    serializer = GigSerializer(data=data, partial=True, context=request)
     if serializer.is_valid():
         gig = serializer.save()
         create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
@@ -300,6 +304,7 @@ def add_gig_details(request, id):
     
     try:
         gig = Gig.objects.get(id=id)
+        print("gig:", gig)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
@@ -307,12 +312,12 @@ def add_gig_details(request, id):
     # If flyer_bg is present in FILES, add it to data
     if 'flyer_bg' in request.FILES:
         data['flyer_bg'] = request.FILES['flyer_bg']
-    max_tickets = data.get('max_tickets', None)
+    max_tickets = int(data.get('max_tickets', 0))
     
-    if max_tickets is None:
-        return Response({'detail': 'max_tickets value missing'}, status=status.HTTP_400_BAD_REQUEST)
-
-    venue = Venue.objects.get(id=gig.venue)
+    if max_tickets == 0:
+        return Response({'detail': 'max_tickets cannot be zero'}, status=status.HTTP_400_BAD_REQUEST)
+    print("user", user)
+    venue = Venue.objects.get(user_id=user.id)
 
     if max_tickets > venue.capacity:
         return Response({'detail': 'Max tickets value exceeds venue capacity'}, status=status.HTTP_400_BAD_REQUEST)
@@ -368,13 +373,13 @@ def update_gig_status(request, id):
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     
     data = request.data.copy()
-    status = data.get('status', None)
+    new_status = data.get('status', None)
     
-    if status is None:
+    if new_status is None:
         return Response({'detail': 'status value missing'}, status=status.HTTP_400_BAD_REQUEST)
     
     allowed_status = ['approved', 'rejected']
-    if status not in allowed_status:
+    if new_status not in allowed_status:
         return Response({'detail': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -382,7 +387,7 @@ def update_gig_status(request, id):
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     try:
-        gig.status = status
+        gig.status = new_status
         gig.save()
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -550,12 +555,14 @@ def generate_contract(request, gig_id):
     if price <= 0:
         return Response({'detail': 'Price cannot be less than or equal to 0'}, status=status.HTTP_400_BAD_REQUEST)
     try:
+
         gig = Gig.objects.get(id=gig_id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     try:
-        artist = Artist.objects.get(id=gig.artist)
+        print(model_to_dict(gig))
+        artist = Artist.objects.get(user=gig.user.id)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
     
