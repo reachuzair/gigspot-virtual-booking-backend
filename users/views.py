@@ -4,13 +4,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from custom_auth.models import User, Artist, Venue, Fan
 from custom_auth.models import ROLE_CHOICES
+from users.serializers import ArtistProfileSerializer, FanProfileSerializer,  VenueProfileSerializer
 from .models import UserSettings
 from rt_notifications.utils import create_notification
 from django.forms.models import model_to_dict
 from django.core.files.storage import default_storage
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
+from rest_framework.views import APIView
 # Create your views here.
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -23,13 +26,14 @@ def user_profile(request):
             'role': user.role,
             "profileImage": user.profileImage.url if user.profileImage else None
         }
-        
+
         def get_artist_data(artist):
-            artist_data = model_to_dict(artist, exclude=['verification_docs', 'logo'])
+            artist_data = model_to_dict(
+                artist, exclude=['verification_docs', 'logo'])
             artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs else None
             artist_data['logo'] = artist.logo.url if artist.logo else None
             return artist_data
-            
+
         def get_venue_data(venue):
             venue_data = model_to_dict(venue, exclude=['verification_docs', 'seating_plan'])
             venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
@@ -37,7 +41,7 @@ def user_profile(request):
 
 
             return venue_data
-            
+
         if user.role == ROLE_CHOICES.ARTIST:
             artist = Artist.objects.get(user=user)
             response_data['artist'] = get_artist_data(artist)
@@ -47,11 +51,12 @@ def user_profile(request):
         elif user.role == ROLE_CHOICES.FAN:
             fan = Fan.objects.get(user=user)
             response_data['fan'] = model_to_dict(fan)
-            
+
         return Response(response_data)
-        
+
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -60,35 +65,36 @@ def update_profile_image(request):
     try:
         user = request.user
         print(f"User: {user.name}, ID: {user.id}")
-        # Check if file is in request.FILES
         if 'profileImage' not in request.FILES:
             return Response({"detail": "No image file provided"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         image_file = request.FILES['profileImage']
-        print(f"Received file: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
-        # Validate file type
+        print(
+            f"Received file: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
         allowed_types = ['image/jpeg', 'image/png', 'image/gif']
         if image_file.content_type not in allowed_types:
             return Response({"detail": "Invalid image type. Only JPEG, PNG, and GIF are allowed."},
-                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate file size (e.g., 5MB limit)
-        if image_file.size > 5 * 1024 * 1024:  # 5MB
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if image_file.size > 5 * 1024 * 1024:
             return Response({"detail": "Image file too large. Maximum size is 5MB."},
-                           status=status.HTTP_400_BAD_REQUEST)
-        print(f"Image file is valid: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
+                            status=status.HTTP_400_BAD_REQUEST)
+        print(
+            f"Image file is valid: {image_file.name}, size: {image_file.size}, type: {image_file.content_type}")
         # Save the image
         user.profileImage = image_file
         print(f"Saving profile image for user: {user.name}, ID: {user.id}")
         user.save()
         print(f"Profile image updated for user: {user.name}, ID: {user.id}")
-        create_notification(user, 'system', 'Profile Image Updated', description='You have successfully updated your profile image.')
+        create_notification(user, 'system', 'Profile Image Updated',
+                            description='You have successfully updated your profile image.')
         return Response({
             "detail": "Profile image updated successfully",
             "image_url": user.profileImage.url if user.profileImage else None
         }, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
@@ -97,27 +103,28 @@ def update_notification_settings(request):
         user = request.user
         key = request.data.get('key')
         value = request.data.get('value')
-        
+
         if not key or not value:
             return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         user_settings = UserSettings.objects.filter(user=user).first()
         if not user_settings:
             user_settings = UserSettings.objects.create(user=user)
-    
-        allowed_keys = ['notify_by_email', 'notify_by_app'] 
+
+        allowed_keys = ['notify_by_email', 'notify_by_app']
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if value not in [True, False]:
             return Response({"detail": "Value must be a boolean"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         setattr(user_settings, key, value)
         user_settings.save()
-        
+
         return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
@@ -126,10 +133,10 @@ def update_user_profile(request):
         user = request.user
         key = request.data.get('key')
         value = request.data.get('value')
-        
+
         if not key or not value:
             return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         allowed_keys = ['name', 'name']
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
@@ -142,12 +149,13 @@ def update_user_profile(request):
             user.name = value
         else:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         user.save()
-        
+
         return Response({"detail": "Profile updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
@@ -161,26 +169,71 @@ def delete_user(request):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_artist_soundcharts_uuid(request):
     try:
         user = request.user
         soundcharts_uuid = request.data.get('soundcharts_uuid')
-        
+
         if not soundcharts_uuid:
             return Response({"detail": "Soundcharts UUID is required"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
         # Check if user has an artist role
         if user.role != 'artist':
             return Response({"detail": "User is not an artist"}, status=status.HTTP_403_FORBIDDEN)
-            
+
         # Get or create artist record
         artist, created = Artist.objects.get_or_create(user=user)
-        
+
         artist.soundcharts_uuid = soundcharts_uuid
         artist.save()
-        
+
         return Response({"detail": "Soundcharts UUID updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    user = request.user
+    profile = None
+    serializer_class = None
+
+    if user.role == ROLE_CHOICES.ARTIST:
+        try:
+            profile = user.artist
+            serializer_class = ArtistProfileSerializer
+        except Artist.DoesNotExist:
+            return Response({'detail': 'Artist profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    elif user.role == ROLE_CHOICES.VENUE:
+        try:
+            profile = user.venue
+            serializer_class = VenueProfileSerializer
+        except Venue.DoesNotExist:
+            return Response({'detail': 'Venue profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    elif user.role == ROLE_CHOICES.FAN:
+        try:
+            profile = user.fan
+            serializer_class = FanProfileSerializer
+        except Fan.DoesNotExist:
+            return Response({'detail': 'Fan profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    else:
+        return Response({'detail': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'GET':
+        serializer = serializer_class(profile)
+        return Response(serializer.data)
+
+    serializer = serializer_class(
+        profile, data=request.data, partial=(request.method == 'PATCH'))
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
