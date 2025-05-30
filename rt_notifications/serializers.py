@@ -9,4 +9,10 @@ class NotificationSerializer(serializers.ModelSerializer):
                   'message', 'is_read','created_at', 'recipient']
         read_only_fields = ['created_at']
 
+
+class EmailSerializer(serializers.Serializer):
+    subject = serializers.CharField()
+    message = serializers.CharField()
+    to = serializers.ListField(child=serializers.EmailField())
+    attachment = serializers.FileField(required=False)
     
