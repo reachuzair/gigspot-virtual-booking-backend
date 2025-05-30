@@ -41,10 +41,6 @@ def user_profile(request):
             venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
             venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan else None
 
-            venue_data = model_to_dict(venue, exclude=['verification_docs', 'seating_plan'])
-            venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
-            venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan else None
-
 
 
             return venue_data
