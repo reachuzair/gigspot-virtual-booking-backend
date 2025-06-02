@@ -173,7 +173,7 @@ class Venue(models.Model):
         upload_to='venue_seating_plan', blank=True, null=True)
     reservation_fee = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
-    adress = models.CharField(max_length=255, blank=True, null=True)
+    address = models.CharField(max_length=255, blank=True, null=True)
     artist_capacity = models.IntegerField(default=0)
     is_completed = models.BooleanField(default=False)
     stripe_account_id = models.CharField(

@@ -11,7 +11,7 @@ from .models import Event
 from .serializers import EventSerializer
 from custom_auth.models import Venue
 from users.serializers import VenueProfileSerializer
-
+from rest_framework.views import APIView
 
 class VenueFilter(django_filters.FilterSet):
     city = django_filters.CharFilter(method='filter_city')
@@ -204,3 +204,37 @@ class VenueDetailView(generics.RetrieveAPIView):
     queryset = Venue.objects.all()
     serializer_class = VenueProfileSerializer
     lookup_field = 'id'
+
+
+class LikeEventView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, event_id):
+        try:
+            event = Event.objects.get(pk=event_id)
+
+            if request.user in event.likes.all():
+                event.likes.remove(request.user)
+                return Response({'status': 'success', 'message': 'Event unliked'}, status=status.HTTP_200_OK)
+            else:
+                event.likes.add(request.user)
+                return Response({'status': 'success', 'message': 'Event liked'}, status=status.HTTP_201_CREATED)
+
+        except Event.DoesNotExist:
+            return Response({'status': 'error', 'message': 'Event not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class UserLikedEventsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        liked_events = request.user.liked_events.all()  
+        from .serializers import EventSerializer
+        serializer = EventSerializer(liked_events, many=True)
+        return Response({
+            'status': 'success',
+            'data': serializer.data,
+            'message': 'Liked events retrieved successfully'
+        }, status=status.HTTP_200_OK)
