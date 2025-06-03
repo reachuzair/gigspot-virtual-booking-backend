@@ -19,7 +19,7 @@ class VenueProfileSerializer(serializers.ModelSerializer):
             'id', 'verification_docs', 'location', 'capacity', 'amenities',
             'seating_plan', 'reservation_fee', 'artist_capacity', 'is_completed',
             'stripe_account_id', 'stripe_onboarding_completed', 'created_at',
-            'updated_at', 'user', 'adress'
+            'updated_at', 'user', 'address'
         ]
 
 

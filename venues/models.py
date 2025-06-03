@@ -3,6 +3,8 @@ from django.core.validators import MinValueValidator
 from django.utils import timezone
 import os
 
+from gigspot_backend import settings
+
 
 def event_flyer_path(instance, filename):
     # Generate a unique filename for event flyers
@@ -77,6 +79,11 @@ class Event(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    likes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='liked_events',
+        blank=True
+    )
     
     class Meta:
         ordering = ['-created_at']
