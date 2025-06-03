@@ -1,10 +1,24 @@
-# # urls.py (inside your app)
-# from django.urls import path
-# from .views import CreateChatRoomView, MessageListView, DeleteMessageView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import (
+    CreateChatRoomView, 
+    DeleteMessageView,
+    InboxView,
+    MarkMessagesAsReadView
+)
+from .email_urls import urlpatterns as email_urls
 
-# urlpatterns = [
-#     path("create-chat/", CreateChatRoomView.as_view(), name="create_chat_room"),
-#       path("messages/<int:room_id>/", MessageListView.as_view(), name="get_room_messages"),
-#     path("messages/delete/<int:message_ids>/", DeleteMessageView.as_view(), name="delete_message"),
-# ]
+app_name = 'chat'
+
+# API endpoints
+urlpatterns = [
+    # Chat endpoints
+    path('create/', CreateChatRoomView.as_view(), name='create-chat-room'),
+    path('inbox/', InboxView.as_view(), name='inbox'),
+    path('messages/delete/', DeleteMessageView.as_view(), name='delete-message'),
+    path('messages/mark-read/', MarkMessagesAsReadView.as_view(), name='mark-messages-read'),
+    
+    # Email endpoints
+    path('emails/', include((email_urls, 'email_api'))),
+]
 

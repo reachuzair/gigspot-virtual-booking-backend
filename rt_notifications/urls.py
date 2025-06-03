@@ -10,5 +10,5 @@ urlpatterns = [
          name='create_notification'),
     path('mark_all_as_read/',
          views.mark_all_as_read, name='mark_all_as_read'),
-    path('email/', views.SendEmailView.as_view(), name='email_notifications'),
+   
 ]
