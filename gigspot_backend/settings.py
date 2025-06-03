@@ -39,6 +39,7 @@ ALLOWED_HOSTS = [
     '172.31.31.43',
     '7eaf-223-123-14-195.ngrok-free.app',
     'app.gigspotvb.com',
+    '1a2f-119-160-56-115.ngrok-free.app'
 ]
 
 AUTH_USER_MODEL = 'custom_auth.User'

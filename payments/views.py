@@ -1,3 +1,4 @@
+from decimal import ROUND_HALF_UP, Decimal
 import logging
 import stripe
 from django.conf import settings
@@ -31,45 +32,41 @@ def create_payment_intent(request, gig_id):
         gig = Gig.objects.get(id=gig_id)
         quantity = int(request.data.get('quantity', 1))
         artist_id = int(request.data.get('supporting_artist_id', 0))
-        application_fee = int(request.data.get('application_fee', 0))
+        application_fee_input = request.data.get('application_fee', 0)
         item_id = int(request.data.get('item_id', 0))
 
         if item_id == 0:
-            return Response(
-                {'detail': 'Cart item not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"detail": "Cart item not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # If no specific artist is provided, use the gig's artist
         if artist_id == 0:
-            artist = gig.user.artist
+            artist = gig.user_id
             if not artist:
-                return Response(
-                    {'detail': 'Artist not found for this gig.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"detail": "Artist not found for this gig."}, status=status.HTTP_404_NOT_FOUND)
             artist_id = artist.id
         else:
-            try:
-                artist = Artist.objects.get(id=artist_id)
-            except Artist.DoesNotExist:
-                return Response(
-                    {'detail': 'Artist not found.'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            artist = Artist.objects.get(user_id=artist_id)
 
-        # Calculate amounts (in cents)
-        amount = int(gig.ticket_price * quantity * 100)
-        application_fee = int(application_fee * 100)
+        ticket_price = Decimal(str(gig.ticket_price))
+        # print(
+        #     f"quantity: {quantity} (type: {type(quantity)}), ticket_price: {ticket_price} (type: {type(ticket_price)})")
+        application_fee_val = Decimal(str(application_fee_input))
 
-        # Create the payment intent
+        if quantity <= 0 or ticket_price <= 0:
+            return Response({"detail": "Invalid quantity or ticket price."}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount = int((ticket_price * quantity *
+                     100).to_integral_value(rounding=ROUND_HALF_UP))
+        application_fee = int(
+            (application_fee_val * 100).to_integral_value(rounding=ROUND_HALF_UP))
+
+        if amount < 50:
+            return Response({"detail": "Total amount must be at least $0.50."}, status=status.HTTP_400_BAD_REQUEST)
+
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency="usd",
             application_fee_amount=application_fee,
-            transfer_data={
-                "destination": artist.stripe_account_id,
-            },
+            transfer_data={"destination": artist.stripe_account_id},
             metadata={
                 "gig_id": gig.id,
                 "fan_id": user.id,
@@ -79,7 +76,6 @@ def create_payment_intent(request, gig_id):
                 "item_id": item_id,
             }
         )
-
         return Response({
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
@@ -147,3 +143,25 @@ def list_tickets(request, gig_id):
         )
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def capture_payment_intent(request):
+    """
+    Capture a previously created PaymentIntent that was authorized.
+    """
+    payment_intent_id = request.data.get('payment_intent_id')
+
+    if not payment_intent_id:
+        return Response({'detail': 'Payment Intent ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        intent = stripe.PaymentIntent.capture(payment_intent_id)
+        return Response({
+            'detail': 'Payment captured successfully.',
+            'payment_intent': intent
+        }, status=status.HTTP_200_OK)
+
+    except stripe.error.InvalidRequestError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
