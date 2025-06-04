@@ -12,27 +12,30 @@ User = get_user_model()
 
 
 class ArtistSerializer(serializers.ModelSerializer):
-    logo = serializers.ImageField(read_only=True)  # Return image URL
+    logo = serializers.ImageField(read_only=True)
+    profileImage = serializers.ImageField(source='logo', read_only=True)
 
     class Meta:
         model = Artist
         fields = ['full_name', 'phone_number', 'band_name',
-                  'band_email', 'logo', 'city', 'state']
+                  'band_email', 'logo', 'city', 'state', 'profileImage']
 
 
 class VenueSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
+    profileImage = serializers.ImageField(source='logo', read_only=True)
 
     class Meta:
         model = Venue
         fields = (
-            'name',  # if you want it here, or get from user.name
-            'phone_number',  # if exists, or add to Venue model
-            'logo',  # If you have logo field in Venue or linked elsewhere
+            'name',
+            'phone_number',
+            'logo',
             'city', 'state', 'address', 'capacity', 'amenities',
             'reservation_fee', 'artist_capacity', 'is_completed',
             'stripe_account_id', 'stripe_onboarding_completed',
-            # add any other Venue specific fields here
+            'profileImage'
+
         )
 
     def get_name(self, obj):
@@ -45,7 +48,7 @@ class FanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Fan
         fields = (
-            'name',  # or any other Fan specific fields
+            'name',
         )
 
     def get_name(self, obj):
@@ -84,14 +87,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
         role = data.get('role')
         errors = {}
 
-        # Common required fields for Artist and Venue
         common_fields = ['phone_number', 'city', 'state']
         if role in [ROLE_CHOICES.ARTIST, ROLE_CHOICES.VENUE]:
             for field in common_fields:
                 if not data.get(field):
                     errors[field] = 'This field is required for this role'
 
-        # Role-specific name fields
         if role == ROLE_CHOICES.ARTIST:
             if not data.get('full_name'):
                 errors['full_name'] = 'This field is required for this role'
@@ -114,8 +115,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         role = validated_data.get('role')
-
-        # Extract extra fields
         full_name = validated_data.pop('full_name', None)
         name = validated_data.pop('name', None)
         phone_number = validated_data.pop('phone_number', None)
@@ -131,10 +130,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         elif role in [ROLE_CHOICES.VENUE, ROLE_CHOICES.FAN] and name:
             validated_data['name'] = name
 
-        # Create user
         user = User.objects.create_user(**validated_data)
-
-        # Save extra profile data to attach to user after creation
         profile_data = {
             'phone_number': phone_number,
             'logo': logo,
@@ -158,8 +154,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'otp_verification',
             {'otp': otp}
         )
-
-        # Temporarily attach profile data to user instance for view use
         user.profile_data = profile_data
         return user
 
@@ -180,7 +174,6 @@ class UserSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Remove 'name' field if role is artist and name is empty
         if data.get('role') == ROLE_CHOICES.ARTIST and data.get('name') == "":
             data.pop('name')
         return data
