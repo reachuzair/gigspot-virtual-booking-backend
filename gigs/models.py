@@ -1,6 +1,15 @@
 from django.db import models
+from django.core.validators import MinValueValidator
 from custom_auth.models import Artist, Venue, User, PerformanceTier
 from django.utils import timezone
+import os
+
+def event_flyer_path(instance, filename):
+    # Generate a unique filename for event flyers
+    ext = filename.split('.')[-1]
+    timestamp = int(timezone.now().timestamp())
+    filename = f"event_flyer_{timestamp}.{ext}"
+    return os.path.join('event_flyers', filename)
 
 # Create your models here.
 
@@ -15,32 +24,124 @@ class GenreChoices(models.TextChoices):
     POP = 'pop', 'Pop'
     
 
+class GigType(models.TextChoices):
+    ARTIST_GIG = 'artist_gig', 'Artist Gig'  # Created by artist
+    VENUE_GIG = 'venue_gig', 'Venue Gig'     # Created by venue
+
 class Gig(models.Model):
     id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=255)
+    # Gig type and basic info
+    gig_type = models.CharField(max_length=20, choices=GigType.choices, default=None)
+    # Core fields
+    title = models.CharField(max_length=255, help_text='Title of the gig/event', default="")
+    description = models.TextField(blank=True, null=True, default="")
+    event_date = models.DateTimeField(default=timezone.now)
     booking_start_date = models.DateTimeField(null=True, blank=True)
     booking_end_date = models.DateTimeField(null=True, blank=True)
-    event_date = models.DateTimeField(default=timezone.now)
-    description = models.TextField()
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
+    
+    # Media
+    flyer_image = models.ImageField(upload_to=event_flyer_path, blank=True, null=True)
+    
+    # Relationships
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_gigs', default=None, null=True, blank=True)
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', null=True, blank=True)
+    collaborators = models.ManyToManyField(
+        User,
+        related_name='collaborative_gigs',
+        blank=True
+    )
+    invitees = models.ManyToManyField(
+        'users.Artist',
+        related_name='invited_gigs',
+        blank=True
+    )
+    
+    # Artist requirements
+    minimum_performance_tier = models.CharField(
+        max_length=255, 
+        choices=PerformanceTier.choices, 
+        default=PerformanceTier.FRESH_TALENT,
+        help_text='Minimum performance tier required for artists',
+        null=True,
+        blank=True
+    )
+    
+    # Capacity
+    max_artists = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        default=1,
+        help_text='Maximum number of artists that can participate',
+        null=True,
+        blank=True
+    )
+    max_tickets = models.PositiveIntegerField(
+        default=100,
+        validators=[MinValueValidator(1)],
+        help_text='Maximum number of tickets available',
+        null=True,
+        blank=True
+    )
+    
+    # Financials
+    ticket_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.0,
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True
+    )
+    venue_fee = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.0,
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True
+    )
+    
+    # Status and metadata
+    status = models.CharField(
+        max_length=20, 
+        choices=Status.choices, 
+        default=Status.PENDING,
+        help_text='Current status of the gig'
+    )
+    gig_type = models.CharField(
+        max_length=20,
+        choices=GigType.choices,
+        default=GigType.ARTIST_GIG,
+        help_text='Type of gig (artist-created or venue-created)'
+    )
     is_public = models.BooleanField(default=True)
-    max_artist = models.IntegerField()
-    max_tickets = models.IntegerField(default=100)
     sold_out = models.BooleanField(default=False)
-    ticket_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
-    genre = models.CharField(max_length=255, choices=GenreChoices.choices, default=GenreChoices.RAP)
-    minimum_performance_tier = models.CharField(max_length=255, choices=PerformanceTier.choices, default=PerformanceTier.FRESH_TALENT)
+    slot_available = models.BooleanField(default=True)
+    
+    # Artist-specific fields (for gigs created by artists)
     request_message = models.TextField(blank=True, null=True, default="")
-    flyer_bg = models.ImageField(upload_to='gigs/flyer_bg/', blank=True, null=True)
-    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', default=None, null=True, blank=True)
-    status = models.CharField(max_length=255, choices=Status.choices, default=Status.PENDING)
     invitees = models.ManyToManyField(Artist, related_name='invited_gigs', blank=True)
     collaborators = models.ManyToManyField(Artist, related_name='collaborated_gigs', blank=True)
-    slot_available = models.BooleanField(default=True)
-    venue_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    likes = models.ManyToManyField(User, related_name='liked_gigs', blank=True)
+    
     expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    @property
+    def name(self):
+        return self.title
+        
+    @name.setter
+    def name(self, value):
+        self.title = value
+        
+    @property
+    def flyer_bg(self):
+        return self.flyer_image
+        
+    @flyer_bg.setter
+    def flyer_bg(self, value):
+        self.flyer_image = value
 
     def save(self, *args, **kwargs):
         # Set expires_at to 10 minutes after created_at if not already set
