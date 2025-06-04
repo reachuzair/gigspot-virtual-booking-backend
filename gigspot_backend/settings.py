@@ -39,6 +39,8 @@ ALLOWED_HOSTS = [
     '172.31.31.43',
     '7eaf-223-123-14-195.ngrok-free.app',
     'app.gigspotvb.com',
+    'gigspot-ws-alb-1735954155.eu-north-1.elb.amazonaws.com',
+    'socket.gigspotvb.com',
 ]
 
 AUTH_USER_MODEL = 'custom_auth.User'
