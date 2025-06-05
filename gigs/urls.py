@@ -1,6 +1,5 @@
 from django.urls import path
 from .views import (
-    get_gigs, 
     GigDetailView,
     list_gigs,
     generate_contract_pin,
@@ -22,8 +21,7 @@ from .views import (
 
 urlpatterns = [
     # Gig listing and details
-    path('', get_gigs, name='get_gigs'),
-    path('list/', list_gigs, name='list_gigs'),
+    path('', list_gigs, name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
     

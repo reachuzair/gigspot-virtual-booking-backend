@@ -47,11 +47,12 @@ class Gig(models.Model):
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name='gigs', null=True, blank=True)
     collaborators = models.ManyToManyField(
         User,
-        related_name='collaborative_gigs',
-        blank=True
+        related_name='collaborated_gigs_artist',
+        blank=True,
+        help_text='Artists who are collaborating on this gig'
     )
     invitees = models.ManyToManyField(
-        'users.Artist',
+        'custom_auth.Artist',
         related_name='invited_gigs',
         blank=True
     )
@@ -119,9 +120,8 @@ class Gig(models.Model):
     
     # Artist-specific fields (for gigs created by artists)
     request_message = models.TextField(blank=True, null=True, default="")
-    invitees = models.ManyToManyField(Artist, related_name='invited_gigs', blank=True)
-    collaborators = models.ManyToManyField(Artist, related_name='collaborated_gigs', blank=True)
-    likes = models.ManyToManyField(User, related_name='liked_gigs', blank=True)
+    # Collaborators field is defined above
+    likes = models.ManyToManyField('custom_auth.User', related_name='liked_gigs', blank=True)
     
     expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

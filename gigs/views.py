@@ -1,136 +1,89 @@
+import io
+import math
+import random
+import string
+
+from django.core.cache import cache
+from django.db.models import Q, Prefetch, Count
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from PIL import Image
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfgen import canvas
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from rest_framework import status, filters, generics
 from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status, filters, generics
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
-from django.utils import timezone
-from django.db.models import Q, Prefetch, Count
-from django.core.cache import cache
-from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 
-from .models import Gig, Contract, GigType, Status, GigInvite
-from custom_auth.models import Venue, Artist, User
+from custom_auth.models import ROLE_CHOICES, Venue, Artist, User
 from rt_notifications.utils import create_notification
+from utils.email import send_templated_email
+
+from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus
 from .serializers import (
-    GigSerializer, 
-    ContractSerializer, 
-    GigInviteSerializer,
+    GigSerializer,
+    ContractSerializer,
     VenueEventSerializer,
     GigDetailSerializer
 )
-from PIL import Image
-import io
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # Create your views here.
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_gigs(request):
-    """
-    Get gigs based on user role and query parameters.
-    Query params:
-    - type: Filter by gig type ('artist_gig' or 'venue_gig')
-    - status: Filter by gig status
-    - upcoming: If 'true', only return upcoming gigs (event_date >= today)
-    - venue: Filter by venue ID (for admins only)
-    - page_size: Number of results per page (max 50)
-    """
-    user = request.user
-    
-    # Base queryset with select_related and prefetch_related for performance
-    gigs = Gig.objects.select_related('venue', 'created_by').prefetch_related(
-        Prefetch('collaborators', queryset=User.objects.only('id', 'username')),
-        'invitees'
-    )
-    
-    # Apply filters based on user role
-    if hasattr(user, 'artist'):
-        # For artists, show their created gigs and gigs they're invited to
-        gigs = gigs.filter(
-            Q(created_by=user) | 
-            Q(invitees=user.artist)
-        ).distinct()
-    elif hasattr(user, 'venue'):
-        # For venues, show their created gigs and gigs at their venue
-        gigs = gigs.filter(
-            Q(created_by=user) | 
-            Q(venue=user.venue)
-        ).distinct()
-    else:
-        # For other users, only show their created gigs
-        gigs = gigs.filter(created_by=user)
-    
-    # Apply query filters
-    gig_type = request.query_params.get('type')
-    if gig_type in [gt[0] for gt in GigType.choices]:
-        gigs = gigs.filter(gig_type=gig_type)
-    
-    status = request.query_params.get('status')
-    if status:
-        gigs = gigs.filter(status=status)
-    
-    upcoming = request.query_params.get('upcoming', '').lower() == 'true'
-    if upcoming:
-        gigs = gigs.filter(event_date__gte=timezone.now())
-    
-    # Apply venue filter (for admins)
-    venue_id = request.query_params.get('venue')
-    if venue_id and user.is_staff:
-        gigs = gigs.filter(venue_id=venue_id)
-    
-    # Order by event date by default
-    gigs = gigs.order_by('event_date')
-    
-    # Pagination
-    paginator = PageNumberPagination()
-    paginator.page_size = min(int(request.query_params.get('page_size', 10)), 50)
-    
-    # Create cache key
-    cache_key = f"gigs_{user.id}_{request.META['QUERY_STRING']}_page_{request.query_params.get('page', 1)}"
-    cached_response = cache.get(cache_key)
-    
-    if cached_response:
-        return paginator.get_paginated_response(cached_response)
-    
-    # Get paginated results
-    result_page = paginator.paginate_queryset(gigs, request)
-    
-    # Serialize the paginated results
-    serializer = GigSerializer(result_page, many=True, context={'request': request})
-    
-    # Cache the results for 5 minutes
-    cache.set(cache_key, serializer.data, timeout=300)
-    
-    # Return paginated response
-    return paginator.get_paginated_response(serializer.data)
+class GigPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'per_page'
+    max_page_size = 100
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def list_gigs(request):
     import math
-    user = request.user
-    per_page = int(request.query_params.get('per_page', 10))
-    page = int(request.query_params.get('page', 1))
-    gig_type = request.query_params.get('type')  # 'artist_gig' or 'venue_gig'
-    
-    paginator = PageNumberPagination()
-    paginator.page_size = per_page
+    user = request.user if request.user.is_authenticated else None
+    gig_type = request.query_params.get('type')  # 'artist_gig' or 'venue_git'
 
     # Get filter parameters
     location = request.query_params.get('location')
     radius = int(request.query_params.get('radius', 30))
     search_query = request.query_params.get('search', '')
     
-    # Base queryset - only show approved gigs
-    gigs = Gig.objects.filter(status='approved')
+    # Base queryset
+    gigs = Gig.objects.all()
+    
+    # Apply visibility rules based on authentication and user role
+    if user and user.is_authenticated:
+        if hasattr(user, 'artist'):
+            # For artists:
+            # 1. Their own gigs (created by them or where they're a collaborator)
+            # 2. All public gigs from other artists
+            # 3. All venue gigs
+            gigs = gigs.filter(
+                (Q(created_by=user) | Q(collaborators=user)) |
+                (Q(gig_type=GigType.ARTIST_GIG, is_public=True, status='approved')) |
+                (Q(gig_type=GigType.VENUE_GIG, status='approved'))
+            )
+        elif hasattr(user, 'venue'):
+            # For venues:
+            # 1. Their own gigs (created by them)
+            # 2. All public artist gigs
+            # 3. All other venue gigs
+            gigs = gigs.filter(
+                Q(created_by=user) |
+                (Q(gig_type=GigType.ARTIST_GIG, is_public=True, status='approved')) |
+                (Q(gig_type=GigType.VENUE_GIG, status='approved'))
+            )
+        elif hasattr(user, 'fan'):
+            # Fans can see all approved gigs
+            gigs = gigs.filter(status='approved')
+    else:
+        # Unauthenticated users see nothing
+        gigs = gigs.none()
     
     # Filter by gig type if specified
     if gig_type in [gt[0] for gt in GigType.choices]:
@@ -180,13 +133,26 @@ def list_gigs(request):
     # Order by most recent first
     gigs = gigs.order_by('-created_at')
     
-    # Create cache key
-    cache_key = f"gig_list_{location}_{radius}_{search_query}_{gig_type}_page_{page}_perpage_{per_page}"
-    cached_response = cache.get(cache_key)
-    if cached_response:
-        return paginator.get_paginated_response(cached_response)
+    # Initialize paginator
+    paginator = GigPagination()
     
-    # Paginate and serialize
+    # Create cache key
+    page = request.query_params.get('page', 1)
+    per_page = request.query_params.get('per_page', 10)
+    cache_key = f"gig_list_{location}_{radius}_{search_query}_{gig_type}_page_{page}_perpage_{per_page}"
+    
+    # Check cache
+    cached_response = cache.get(cache_key)
+    if cached_response is not None:
+        # Return cached response with proper pagination structure
+        return Response({
+            'count': len(cached_response),
+            'next': None,  # These would need to be calculated if you want proper pagination links
+            'previous': None,
+            'results': cached_response
+        })
+    
+    # Paginate and serialize if not in cache
     result_page = paginator.paginate_queryset(gigs, request)
     serializer = GigSerializer(
         result_page, 
@@ -203,18 +169,69 @@ class GigDetailView(APIView):
     """
     Retrieve a gig by ID with detailed information
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Handle authentication in the method
     
     def get(self, request, id):
+        user = request.user if request.user.is_authenticated else None
+        
         try:
             gig = Gig.objects.get(id=id)
+            
+            # Check visibility rules
+            if not self._can_view_gig(user, gig):
+                if user and user.is_authenticated:
+                    return Response(
+                        {'detail': 'You do not have permission to view this gig'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                return Response(
+                    {'detail': 'Authentication credentials were not provided.'}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+                
             serializer = GigDetailSerializer(gig, context={'request': request})
             return Response(serializer.data)
+            
         except Gig.DoesNotExist:
             return Response(
                 {'detail': 'Gig not found'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+    
+    def _can_view_gig(self, user, gig):
+        # Unauthenticated users can only see approved public gigs
+        if not user or not user.is_authenticated:
+            return gig.status == 'approved' and gig.is_public
+            
+        # Admin can see everything
+        if user.is_staff:
+            return True
+            
+        # Creator can always see their own gigs
+        if gig.created_by == user:
+            return True
+            
+        # Check user role-based visibility
+        if hasattr(user, 'artist'):
+            # Artists can see their collaborations, venue gigs, or public artist gigs
+            return (
+                user in gig.collaborators.all() or
+                gig.gig_type == GigType.VENUE_GIG or
+                (gig.gig_type == GigType.ARTIST_GIG and gig.is_public)
+            )
+        elif hasattr(user, 'venue'):
+            # Venues can see gigs at their venue, or public gigs
+            return (
+                gig.venue == user.venue or
+                (gig.gig_type == GigType.ARTIST_GIG and gig.is_public) or
+                gig.gig_type == GigType.VENUE_GIG
+            )
+        elif hasattr(user, 'fan'):
+            # Fans can see all approved gigs
+            return gig.status == 'approved'
+            
+        # Default deny
+        return False
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -309,9 +326,9 @@ class LikeGigView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
-    def post(self, request, gig_id):
+    def post(self, request, id):
         try:
-            gig = Gig.objects.get(id=gig_id)
+            gig = Gig.objects.get(id=id)
             user = request.user
             
             if gig.likes.filter(id=user.id).exists():
@@ -320,6 +337,9 @@ class LikeGigView(APIView):
             else:
                 gig.likes.add(user)
                 liked = True
+                
+            # Save the gig to persist the like/unlike action
+            gig.save()
                 
             return Response({
                 'status': 'success',
@@ -341,12 +361,24 @@ class UserLikedGigsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        liked_gigs = request.user.liked_gigs.all()
+        # Get the current user
+        user = request.user
+        print(f"Fetching liked gigs for user: {user.id} - {user.email}")
+        
+        # Get all gigs liked by the user
+        liked_gigs = Gig.objects.filter(likes=user).order_by('-created_at')
+        print(f"Found {liked_gigs.count()} liked gigs for user {user.id}")
+        
+        # Serialize the results
         serializer = GigSerializer(
             liked_gigs, 
             many=True, 
             context={'request': request}
         )
+        
+        # Log the results for debugging
+        print(f"Serialized {len(serializer.data)} gigs for user {user.id}")
+        
         return Response({
             'status': 'success',
             'count': liked_gigs.count(),
@@ -495,35 +527,76 @@ def reject_invite_request(request, id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def initiate_gig(request):
-    user = request.user
-
-    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
-        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    
-    data = request.data.copy()
-    print("data:", data)
-    venue_id = data.get('venue_id', None)
-    
     try:
-        venue = Venue.objects.get(id=venue_id)
-        print("venue:", venue)
-    except Venue.DoesNotExist:
-        return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    data['venue'] = venue.id
-    data['user'] = user
-    if not data.get('max_artist'):
-        data['max_artist'] = venue.artist_capacity
-    serializer = GigSerializer(data=data, partial=True, context=request)
-    if serializer.is_valid():
-        gig = serializer.save()
-        create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
-        return Response({
-            'gig': serializer.data,
-            'message': 'Gig created successfully'
-        }, status=status.HTTP_201_CREATED)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Ensure we have a valid request object with data
+        if not hasattr(request, 'data'):
+            return Response(
+                {'detail': 'Invalid request data'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        user = request.user
+
+        if not hasattr(user, 'role') or user.role not in [ROLE_CHOICES.VENUE, ROLE_CHOICES.ARTIST]:
+            return Response(
+                {'detail': 'Unauthorized - Only artists and venues can create gigs'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Safely get request data
+        data = dict(request.data) if hasattr(request, 'data') else {}
+        venue_id = data.get('venue_id')
+        
+        if not venue_id:
+            return Response(
+                {'detail': 'venue_id is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            venue = Venue.objects.get(id=venue_id)
+        except (Venue.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Venue not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Prepare data for serializer
+        serializer_data = {
+            'venue': venue.id,
+            'created_by': user.id,
+            'max_artist': data.get('max_artist', venue.artist_capacity),
+            **{k: v for k, v in data.items() if k != 'venue_id'}
+        }
+        
+        serializer = GigSerializer(data=serializer_data, context={'request': request})
+        if serializer.is_valid():
+            gig = serializer.save()
+            if hasattr(request, 'user'):
+                create_notification(
+                    request.user, 
+                    'system', 
+                    'Gig created successfully', 
+                    **{'gig_id': gig.id, 'title': gig.title}
+                )
+            return Response(
+                {
+                    'gig': serializer.data,
+                    'message': 'Gig created successfully'
+                }, 
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(
+            {'detail': 'Validation error', 'errors': serializer.errors}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        
+    except Exception as e:
+        return Response(
+            {'detail': f'An error occurred: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -612,10 +685,11 @@ def add_gig_venue_fee(request, id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     
     data = request.data.copy()
-    venue_fee = data.get('venue_fee', user.venue.venue_fee)
+    venue_fee = data.get('venue_fee')
     
     if venue_fee is None:
-        return Response({'detail': 'venue_fee value missing'}, status=status.HTTP_400_BAD_REQUEST)
+        # Use venue's reservation_fee if no venue_fee is provided
+        venue_fee = user.venue.reservation_fee if hasattr(user, 'venue') else 0
     
     gig.venue_fee = venue_fee
     gig.save()
