@@ -1,10 +1,10 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.core.files.storage import default_storage
-
 from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus
 from users.serializers import VenueProfileSerializer, UserSerializer
 from custom_auth.models import Artist, Venue, User, PerformanceTier
+
 
 class VenueSerializer(serializers.ModelSerializer):
     class Meta:
@@ -21,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'email', 'name', 'role', 'profileImage']
         read_only_fields = ['id', 'email', 'name', 'role', 'profileImage']
+
 
 class GigSerializer(serializers.ModelSerializer):
     flyer_image_url = serializers.SerializerMethodField()
@@ -198,4 +199,5 @@ class VenueEventSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
-        fields = ['id', 'artist', 'venue', 'gig', 'price', 'pdf', 'image', 'created_at', 'updated_at']
+        fields = ['id', 'artist', 'venue', 'gig', 'price',
+                  'pdf', 'image', 'created_at', 'updated_at']
