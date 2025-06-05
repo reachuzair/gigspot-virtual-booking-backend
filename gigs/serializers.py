@@ -3,10 +3,12 @@ from .models import Gig, Contract
 from custom_auth.models import Venue
 from django.core.files.storage import default_storage
 
+
 class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = ['id']
+
 
 class GigSerializer(serializers.ModelSerializer):
     # venue = VenueSerializer()
@@ -37,6 +39,7 @@ class GigSerializer(serializers.ModelSerializer):
             'is_approved',
             'created_at',
             'updated_at',
+            'sold_out'
         ]
         extra_kwargs = {
             'flyer_bg': {'write_only': True},
@@ -57,4 +60,5 @@ class GigSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
-        fields = ['id', 'artist', 'venue', 'gig', 'price', 'pdf', 'image', 'created_at', 'updated_at']
+        fields = ['id', 'artist', 'venue', 'gig', 'price',
+                  'pdf', 'image', 'created_at', 'updated_at']

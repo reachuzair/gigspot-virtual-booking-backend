@@ -1,3 +1,4 @@
+from decimal import ROUND_HALF_UP, Decimal
 import logging
 import stripe
 from django.conf import settings
@@ -5,11 +6,13 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
+from custom_auth.models import Artist
 from gigs.models import Gig
+from payments.models import Ticket
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -18,56 +21,52 @@ def create_payment_intent(request, gig_id):
     Create a payment intent for purchasing tickets to a gig.
     """
     user = request.user
-    
-    if user.role != 'FAN':  # Assuming ROLE_CHOICES.FAN is 'FAN'
+    print(f"User: {user}, Role: {user.role}")
+    if user.role != 'fan':  # Assuming ROLE_CHOICES.FAN is 'FAN'
         return Response(
-            {'detail': 'Please login with fan account.'}, 
+            {'detail': 'Please login with fan account.'},
             status=status.HTTP_401_UNAUTHORIZED
         )
-    
+
     try:
         gig = Gig.objects.get(id=gig_id)
         quantity = int(request.data.get('quantity', 1))
         artist_id = int(request.data.get('supporting_artist_id', 0))
-        application_fee = int(request.data.get('application_fee', 0))
+        application_fee_input = request.data.get('application_fee', 0)
         item_id = int(request.data.get('item_id', 0))
 
         if item_id == 0:
-            return Response(
-                {'detail': 'Cart item not found.'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # If no specific artist is provided, use the gig's artist
+            return Response({"detail": "Cart item not found."}, status=status.HTTP_404_NOT_FOUND)
+
         if artist_id == 0:
-            artist = gig.user.artist
+            artist = gig.user_id
             if not artist:
-                return Response(
-                    {'detail': 'Artist not found for this gig.'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"detail": "Artist not found for this gig."}, status=status.HTTP_404_NOT_FOUND)
             artist_id = artist.id
         else:
-            try:
-                artist = Artist.objects.get(id=artist_id)
-            except Artist.DoesNotExist:
-                return Response(
-                    {'detail': 'Artist not found.'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        # Calculate amounts (in cents)
-        amount = int(gig.ticket_price * quantity * 100)
-        application_fee = int(application_fee * 100)
-        
-        # Create the payment intent
+            artist = Artist.objects.get(user_id=artist_id)
+
+        ticket_price = Decimal(str(gig.ticket_price))
+        # print(
+        #     f"quantity: {quantity} (type: {type(quantity)}), ticket_price: {ticket_price} (type: {type(ticket_price)})")
+        application_fee_val = Decimal(str(application_fee_input))
+
+        if quantity <= 0 or ticket_price <= 0:
+            return Response({"detail": "Invalid quantity or ticket price."}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount = int((ticket_price * quantity *
+                     100).to_integral_value(rounding=ROUND_HALF_UP))
+        application_fee = int(
+            (application_fee_val * 100).to_integral_value(rounding=ROUND_HALF_UP))
+
+        if amount < 50:
+            return Response({"detail": "Total amount must be at least $0.50."}, status=status.HTTP_400_BAD_REQUEST)
+
         intent = stripe.PaymentIntent.create(
             amount=amount,
             currency="usd",
             application_fee_amount=application_fee,
-            transfer_data={
-                "destination": artist.stripe_account_id,
-            },
+            transfer_data={"destination": artist.stripe_account_id},
             metadata={
                 "gig_id": gig.id,
                 "fan_id": user.id,
@@ -77,23 +76,23 @@ def create_payment_intent(request, gig_id):
                 "item_id": item_id,
             }
         )
-        
         return Response({
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
         })
-        
+
     except Gig.DoesNotExist:
         return Response(
-            {"error": "Gig not found"}, 
+            {"error": "Gig not found"},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
         logger.error(f"Error creating payment intent: {str(e)}")
         return Response(
-            {'detail': 'An error occurred while creating the payment intent.'}, 
+            {'detail': 'An error occurred while creating the payment intent.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -104,13 +103,13 @@ def list_tickets(request, gig_id):
     try:
         # Get the gig
         gig = Gig.objects.get(id=gig_id)
-        
+
         # Get tickets for this user and gig
         tickets = Ticket.objects.filter(
             gig=gig,
             user=request.user
         )
-        
+
         # Serialize the tickets
         ticket_data = [
             {
@@ -125,12 +124,12 @@ def list_tickets(request, gig_id):
             }
             for ticket in tickets
         ]
-        
+
         return Response({
             'count': len(ticket_data),
             'tickets': ticket_data
         })
-        
+
     except Gig.DoesNotExist:
         return Response(
             {'detail': 'Gig not found.'},
@@ -142,3 +141,27 @@ def list_tickets(request, gig_id):
             {'detail': 'An error occurred while fetching tickets.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def capture_payment_intent(request):
+    """
+    Capture a previously created PaymentIntent that was authorized.
+    """
+    payment_intent_id = request.data.get('payment_intent_id')
+
+    if not payment_intent_id:
+        return Response({'detail': 'Payment Intent ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        intent = stripe.PaymentIntent.capture(payment_intent_id)
+        return Response({
+            'detail': 'Payment captured successfully.',
+            'payment_intent': intent
+        }, status=status.HTTP_200_OK)
+
+    except stripe.error.InvalidRequestError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
