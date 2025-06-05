@@ -69,6 +69,9 @@ class CreateChatRoomView(APIView):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_messages(request, room_id):
+    # Check for cache-busting parameter
+    no_cache = request.query_params.get('no_cache', '').lower() == 'true'
+    
     try:
         room = ChatRoom.objects.get(id=room_id)
     except ChatRoom.DoesNotExist:
@@ -80,16 +83,20 @@ def get_messages(request, room_id):
     page = int(request.query_params.get('page', 1))
     per_page = int(request.query_params.get('page_size', 20))
 
-    cache_key = f"messages_{request.user.id}_room_{room_id}_page_{page}_per_{per_page}"
-    cached_data = cache.get(cache_key)
-    if cached_data:
-        return Response({
-            "count": cached_data['count'],
-            "next": cached_data['next'],
-            "previous": cached_data['previous'],
-            "results": cached_data['results'],
-        })
+    # Only use cache if no_cache is not True
+    if not no_cache:
+        cache_key = f"messages_{request.user.id}_room_{room_id}_page_{page}_per_{per_page}"
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response({
+                "count": cached_data['count'],
+                "next": cached_data['next'],
+                "previous": cached_data['previous'],
+                "results": cached_data['results'],
+                "cached": True  # Add this to identify cached responses
+            })
 
+    # Get fresh data from database
     messages = Message.objects.filter(chat_room=room).order_by('-created_at')
     paginator = PageNumberPagination()
     paginator.page_size = per_page
@@ -98,15 +105,22 @@ def get_messages(request, room_id):
     serializer = MessageSerializer(result_page, many=True)
     paginated_response = paginator.get_paginated_response(serializer.data)
 
-    # Cache the entire response payload
-    cache.set(cache_key, {
-        "count": paginated_response.data['count'],
-        "next": paginated_response.data['next'],
-        "previous": paginated_response.data['previous'],
-        "results": paginated_response.data['results'],
-    }, timeout=60 * 5)
+    # Only update cache if we're not forcing a refresh
+    if not no_cache:
+        cache.set(cache_key, {
+            "count": paginated_response.data['count'],
+            "next": paginated_response.data['next'],
+            "previous": paginated_response.data['previous'],
+            "results": paginated_response.data['results'],
+        }, timeout=60 * 5)  # 5 minutes cache
 
-    return paginated_response
+    # Add cache status to response
+    response_data = paginated_response.data
+    if not isinstance(response_data, dict):
+        response_data = dict(response_data)
+    response_data['cached'] = False
+    
+    return Response(response_data)
 
 
 class DeleteMessageView(APIView):
@@ -114,21 +128,40 @@ class DeleteMessageView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request):
+        from django.core.cache import cache
+        from django.db import transaction
+        
         message_ids = request.data.get("message_ids", [])
 
         if not isinstance(message_ids, list) or not all(isinstance(i, int) for i in message_ids):
             return Response({"detail": "message_ids must be a list of integers."}, status=400)
 
-        # Get messages sent by the user
-        user_messages = Message.objects.filter(id__in=message_ids, sender=request.user)
+        # First, get the room IDs and messages in a single query
+        messages = Message.objects.filter(
+            id__in=message_ids,
+            sender=request.user
+        ).only('id', 'chat_room_id')
 
-        if not user_messages.exists():
+        if not messages.exists():
             return Response({"detail": "No messages found to delete or you don't own them."}, status=404)
 
-        deleted_count = user_messages.count()
-        user_messages.delete()
+        # Get unique room IDs
+        room_ids = {msg.chat_room_id for msg in messages}
+        
+        # Perform the deletion in a single query
+        with transaction.atomic():
+            deleted_count, _ = Message.objects.filter(
+                id__in=message_ids,
+                sender=request.user
+            ).delete()
+            
+            # Invalidate cache for all affected rooms - do this outside transaction
+            transaction.on_commit(lambda: [
+                cache.delete_many(cache.keys(f'messages_*_room_{room_id}_page_*'))
+                for room_id in room_ids
+            ])
 
-        return Response({"detail": f"{deleted_count} messages deleted successfully."}, status=204)
+            return Response({"detail": f"{deleted_count} messages deleted successfully."}, status=204)
 
 
 class InboxView(APIView):
