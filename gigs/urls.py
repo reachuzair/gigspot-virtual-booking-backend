@@ -1,22 +1,10 @@
 from django.urls import path
 from .views import (
-    GigDetailView,
-    list_gigs,
-    generate_contract_pin,
-    generate_contract,
-    get_contract,
-    add_gig_type,
-    initiate_gig,
-    add_gig_details,
-    update_gig_status,
-    send_invite_request,
-    accept_invite_request,
-    reject_invite_request,
-    add_gig_venue_fee,
-    create_venue_event,
-    LikeGigView,
-    UserLikedGigsView,
-    UpcomingGigsView,
+    list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView,
+    send_invite_request, accept_invite_request, reject_invite_request,
+    initiate_gig, add_gig_type, add_gig_details, update_gig_status,
+    generate_contract, get_contract, sign_contract, generate_contract_pin,
+    create_venue_event, add_gig_venue_fee, validate_ticket_price
 )
 
 urlpatterns = [
@@ -29,6 +17,7 @@ urlpatterns = [
     path('initiate/', initiate_gig, name='initiate_gig'),
     path('<int:id>/like/', LikeGigView.as_view(), name='like_gig'),
     path('liked/', UserLikedGigsView.as_view(), name='user_liked_gigs'),
+    path('validate-price/', validate_ticket_price, name='validate_ticket_price'),
     
     # Contract related
     path('contract/generate-pin/', generate_contract_pin, name='generate_contract_pin'),

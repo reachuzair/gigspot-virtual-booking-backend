@@ -2,6 +2,7 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from custom_auth.models import Artist, Venue, User, PerformanceTier
 from django.utils import timezone
+from .utils import validate_ticket_price, PricingValidationError
 import os
 
 def event_flyer_path(instance, filename):
@@ -143,10 +144,90 @@ class Gig(models.Model):
     def flyer_bg(self, value):
         self.flyer_image = value
 
+    def clean(self):
+        """
+        Validate the model before saving.
+        Ensures ticket price meets the minimum requirements for artist-hosted shows.
+        """
+        if self.gig_type == self.GigType.ARTIST_GIG and self.ticket_price is not None:
+            # Get the creator's performance tier (default to FRESH_TALENT if not set)
+            creator_tier = PerformanceTier.FRESH_TALENT
+            if hasattr(self.created_by, 'artist') and self.created_by.artist:
+                creator_tier = self.created_by.artist.performance_tier
+            
+            # Validate the ticket price
+            validation = validate_ticket_price(creator_tier, self.ticket_price)
+            if not validation['is_valid']:
+                raise PricingValidationError(validation['message'])
+    
+    def requires_price_confirmation(self, price=None):
+        """
+        Check if the given price requires confirmation based on the artist's tier.
+        
+        Args:
+            price (Decimal, optional): Price to check. Uses self.ticket_price if None.
+            
+        Returns:
+            dict: {
+                'requires_confirmation': bool,
+                'message': str,  # Explanation if confirmation is needed
+                'suggested_range': str  # Suggested price range if applicable
+            }
+        """
+        if price is None:
+            price = self.ticket_price
+            
+        if price is None:
+            return {
+                'requires_confirmation': False,
+                'message': '',
+                'suggested_range': ''
+            }
+            
+        # Get the creator's performance tier (default to FRESH_TALENT if not set)
+        creator_tier = PerformanceTier.FRESH_TALENT
+        if hasattr(self.created_by, 'artist') and self.created_by.artist:
+            creator_tier = self.created_by.artist.performance_tier
+            
+        # Minimum price check
+        price = float(price)
+        if price < 5:
+            return {
+                'requires_confirmation': True,
+                'message': 'Minimum ticket price is $5 for all artist-hosted shows.',
+                'suggested_range': '$5+'
+            }
+            
+        # Tier-specific guardrails (only for first three tiers)
+        tier_ranges = {
+            PerformanceTier.FRESH_TALENT: (5, 10),
+            PerformanceTier.NEW_BLOOD: (5, 30),
+            PerformanceTier.UP_AND_COMING: (7, 35)
+        }
+        
+        if creator_tier in tier_ranges:
+            min_price, max_price = tier_ranges[creator_tier]
+            if price < min_price or price > max_price:
+                tier_name = creator_tier.label
+                return {
+                    'requires_confirmation': True,
+                    'message': f'For {tier_name}, the suggested ticket price range is ${min_price} - ${max_price}.',
+                    'suggested_range': f'${min_price} - ${max_price}'
+                }
+        
+        return {
+            'requires_confirmation': False,
+            'message': '',
+            'suggested_range': ''
+        }
+    
     def save(self, *args, **kwargs):
         # Set expires_at to 10 minutes after created_at if not already set
         if not self.expires_at and self.created_at:
             self.expires_at = self.created_at + timezone.timedelta(minutes=10)
+            
+        # Run model validation
+        self.full_clean()
         super(Gig, self).save(*args, **kwargs)
 
 

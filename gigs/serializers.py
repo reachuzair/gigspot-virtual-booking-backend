@@ -39,6 +39,7 @@ class GigSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
     max_artist = serializers.SerializerMethodField()
+    price_validation = serializers.SerializerMethodField()
     
     class Meta:
         model = Gig
@@ -48,7 +49,7 @@ class GigSerializer(serializers.ModelSerializer):
             'booking_start_date', 'booking_end_date', 'flyer_image',
             'flyer_bg', 'flyer_bg_url', 'minimum_performance_tier',
             'max_artists', 'max_tickets', 'ticket_price', 'venue_fee',
-            'status', 'is_public', 'sold_out', 'slot_available',
+            'status', 'is_public', 'sold_out', 'slot_available', 'price_validation',
             'request_message', 'expires_at', 'created_at', 'updated_at',
             
             # Related fields
@@ -94,6 +95,22 @@ class GigSerializer(serializers.ModelSerializer):
     def get_max_artist(self, obj):
         """Return the max_artists value (for backward compatibility)."""
         return obj.max_artists
+        
+    def get_price_validation(self, obj):
+        """Return price validation information for the gig."""
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user') or not request.user.is_authenticated:
+            return None
+            
+        # Only include price validation for the gig creator
+        if obj.created_by != request.user:
+            return None
+            
+        # Only for artist gigs
+        if obj.gig_type != GigType.ARTIST_GIG:
+            return None
+            
+        return obj.requires_price_confirmation()
     
     def get_is_liked(self, obj):
         """Check if the current user has liked this gig."""
