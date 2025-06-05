@@ -139,60 +139,58 @@ class VenueAdPlan(models.Model):
     
     # Feature mapping for each tier
     FEATURE_MAP = {
-        'STARTER': {
-            'description': 'Basic visibility for your venue',
-            'weekly_price': 25.00,
-            'monthly_price': 75.00,
-            'features': [
-                'Appear as "Suggested Venue" in artist dashboards',
-                'Included in city/region searches',
-                'Featured label on listings',
-                'Appear in venue suggestions',
-                'Basic venue profile visibility'
-            ],
-            'priority_in_search': False,
-            'custom_map_pin': False,
-            'homepage_feature': False,
-            'email_spotlight': False,
-            'analytics_access': False,
-            'promo_analytics': False
-        },
-        'BOOSTED': {
-            'description': 'Enhanced visibility with priority placement',
-            'monthly_price': 150.00,
-            'features': [
-                'Priority spot on map',
-                'Always shown first in matching searches',
-                'Custom branded map pin',
-                'Click-through metrics',
-                'Promo analytics',
-                'All Starter features'
-            ],
-            'priority_in_search': True,
-            'custom_map_pin': True,
-            'homepage_feature': False,
-            'email_spotlight': False,
-            'analytics_access': True,
-            'promo_analytics': True
-        },
-        'PREMIUM': {
-            'description': 'Maximum exposure with premium features',
-            'monthly_price': 250.00,
-            'features': [
-                'Featured slot on home dashboard',
-                'Email spotlight to touring artists',
-                'Priority support',
-                'Home page carousel feature',
-                'All Boosted features'
-            ],
-            'priority_in_search': True,
-            'custom_map_pin': True,
-            'homepage_feature': True,
-            'email_spotlight': True,
-            'analytics_access': True,
-            'promo_analytics': True
+            'STARTER': {
+                'description': 'Basic visibility for your venue',
+                'weekly_price': 25.00,
+                'monthly_price': 75.00,
+                'features': [
+                    'Appear as "Suggested Venue" in artist dashboards',
+                    'Appear in city searches',
+                    'Basic venue profile visibility'
+                ],
+                'priority_in_search': False,
+                'custom_map_pin': False,
+                'homepage_feature': False,
+                'email_spotlight': False,
+                'analytics_access': False,
+                'promo_analytics': False
+            },
+            'BOOSTED': {
+                'description': 'Increased visibility for your venue',
+                'weekly_price': 37.50,  # 150/4 weeks
+                'monthly_price': 150.00,
+                'features': [
+                    'Priority spot on map',
+                    'Always shown first in matching tier searches',
+                    'All Starter tier features',
+                    'Highlighted in search results'
+                ],
+                'priority_in_search': True,
+                'custom_map_pin': True,
+                'homepage_feature': False,
+                'email_spotlight': False,
+                'analytics_access': True,
+                'promo_analytics': True
+            },
+            'PREMIUM': {
+                'description': 'Maximum visibility and premium placement',
+                'weekly_price': 62.50,  # 250/4 weeks
+                'monthly_price': 250.00,
+                'features': [
+                    'Featured slot on home dashboard',
+                    'All Boosted tier features',
+                    'Premium badge on profile',
+                    'Priority support',
+                    'Featured in weekly newsletter'
+                ],
+                'priority_in_search': True,
+                'custom_map_pin': True,
+                'homepage_feature': True,
+                'email_spotlight': True,
+                'analytics_access': True,
+                'promo_analytics': True
+            }
         }
-    }
     
     def __str__(self):
         return f"{self.get_name_display()} - ${self.monthly_price}/month"

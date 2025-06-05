@@ -1,15 +1,150 @@
 # views.py
-from rest_framework import status
+from rest_framework import status, generics, viewsets
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
-from .models import SubscriptionPlan, ArtistSubscription
-from .serializers import SubscriptionPlanSerializer, ArtistSubscriptionSerializer
+from rest_framework.viewsets import ModelViewSet, ViewSet
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from datetime import timedelta
 import stripe
-from datetime import datetime
 from django.conf import settings
 
+from custom_auth.models import Venue
+from .models import (
+    SubscriptionPlan, ArtistSubscription,
+    VenueAdPlan, VenueSubscription
+)
+from .serializers import (
+    SubscriptionPlanSerializer, ArtistSubscriptionSerializer,
+    VenueAdPlanSerializer, VenueSubscriptionSerializer,
+    CreateVenueSubscriptionSerializer
+)
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+class VenueAdPlanViewSet(viewsets.ViewSet):
+    """
+    API endpoint that allows venue ad plans to be viewed.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def list(self, request):
+        queryset = VenueAdPlan.objects.filter(is_active=True).order_by('monthly_price')
+        serializer = VenueAdPlanSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def retrieve(self, request, pk=None):
+        queryset = VenueAdPlan.objects.filter(is_active=True)
+        plan = get_object_or_404(queryset, pk=pk)
+        serializer = VenueAdPlanSerializer(plan)
+        return Response(serializer.data)
+
+
+class VenueSubscriptionViewSet(ModelViewSet):
+    """
+    API endpoint that allows venue subscriptions to be viewed or edited.
+    """
+    serializer_class = VenueSubscriptionSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Only return subscriptions for venues owned by the current user
+        return VenueSubscription.objects.filter(
+            venue__user=self.request.user
+        ).select_related('plan').order_by('-created_at')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CreateVenueSubscriptionSerializer
+        return VenueSubscriptionSerializer
+    
+    def perform_create(self, serializer):
+        # Get the venue from the request data or URL
+        venue_id = self.request.data.get('venue_id')
+        if not venue_id:
+            raise serializers.ValidationError({'venue_id': 'This field is required.'})
+        
+        try:
+            venue = Venue.objects.get(id=venue_id, user=self.request.user)
+        except Venue.DoesNotExist:
+            raise serializers.ValidationError({'venue_id': 'Venue not found or you do not have permission.'})
+        
+        # Check for existing active subscription
+        existing_sub = VenueSubscription.objects.filter(
+            venue=venue,
+            status='active',
+            current_period_end__gt=timezone.now()
+        ).exists()
+        
+        if existing_sub:
+            raise serializers.ValidationError(
+                'This venue already has an active subscription.'
+            )
+        
+        # In a real implementation, you would create a Stripe subscription here
+        # For now, we'll create a subscription with a test Stripe ID
+        serializer.save(
+            venue=venue,
+            status='active',
+            stripe_subscription_id=f'sub_test_{int(timezone.now().timestamp())}',
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timedelta(days=30)
+        )
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a subscription at the end of the current billing period"""
+        subscription = self.get_object()
+        
+        if subscription.status != 'active':
+            return Response(
+                {'error': 'Only active subscriptions can be cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        subscription.cancel_at_period_end = True
+        subscription.save()
+        
+        # In a real implementation, you would update the subscription in Stripe
+        # stripe.Subscription.modify(
+        #     subscription.stripe_subscription_id,
+        #     cancel_at_period_end=True
+        # )
+        
+        return Response({'status': 'subscription will be cancelled at period end'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_venue_subscription_status(request, venue_id):
+    """
+    Get the subscription status for a specific venue
+    """
+    try:
+        venue = Venue.objects.get(id=venue_id, user=request.user)
+    except Venue.DoesNotExist:
+        return Response(
+            {'detail': 'Venue not found or you do not have permission'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    active_subscription = VenueSubscription.objects.filter(
+        venue=venue,
+        status='active',
+        current_period_end__gt=timezone.now()
+    ).select_related('plan').first()
+    
+    if not active_subscription:
+        return Response({'has_active_subscription': False})
+    
+    serializer = VenueSubscriptionSerializer(active_subscription)
+    return Response({
+        'has_active_subscription': True,
+        'subscription': serializer.data
+    })
 
 @api_view(['GET'])
 def subscription_plans(request):

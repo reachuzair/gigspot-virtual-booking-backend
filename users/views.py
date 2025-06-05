@@ -189,11 +189,71 @@ def update_artist_soundcharts_uuid(request):
 
         # Get or create artist record
         artist, created = Artist.objects.get_or_create(user=user)
-
+        
+        # Only update if UUID has changed
+        if artist.soundcharts_uuid == soundcharts_uuid:
+            return Response({"detail": "Soundcharts UUID is already set to this value"}, status=status.HTTP_200_OK)
+            
+        # Update UUID
         artist.soundcharts_uuid = soundcharts_uuid
-        artist.save()
+        
+        # Fetch and update metrics from SoundCharts
+        result = artist.update_metrics_from_soundcharts()
+        
+        if not result.get('success'):
+            # Save the UUID even if metrics update fails, but include a warning
+            artist.save()
+            return Response({
+                "detail": "Soundcharts UUID saved, but failed to fetch metrics",
+                "error": result.get('error', 'Unknown error')
+            }, status=status.HTTP_200_OK)
+            
+        return Response({
+            "detail": "Soundcharts UUID and artist metrics updated successfully",
+            "metrics": {
+                "tier": artist.get_performance_tier_display(),
+                "followers": artist.followers,
+                "monthly_listeners": artist.monthly_listeners,
+                "total_streams": artist.total_streams,
+                "last_updated": artist.last_metrics_update
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"detail": "Soundcharts UUID updated successfully"}, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_artist_metrics(request):
+    """
+    Get the current artist's metrics, updating them if they're stale
+    """
+    try:
+        user = request.user
+        if user.role != 'artist':
+            return Response({"detail": "User is not an artist"}, status=status.HTTP_403_FORBIDDEN)
+            
+        artist = Artist.objects.get(user=user)
+        
+        # Update metrics if needed
+        from custom_auth.utils import update_artist_metrics_if_needed
+        was_updated = update_artist_metrics_if_needed(artist)
+        
+        response_data = {
+            "tier": artist.get_performance_tier_display(),
+            "tier_key": artist.performance_tier,
+            "followers": artist.followers,
+            "monthly_listeners": artist.monthly_listeners,
+            "total_streams": artist.total_streams,
+            "last_updated": artist.last_metrics_update,
+            "metrics_just_updated": was_updated
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Artist.DoesNotExist:
+        return Response({"detail": "Artist profile not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
