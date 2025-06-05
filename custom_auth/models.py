@@ -72,7 +72,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'  # Use email as the unique identifier for authentication
     # Fields required when creating a user via createsuperuser
-    REQUIRED_FIELDS = ['name']
+    REQUIRED_FIELDS = []
 
     def __str__(self):
         return self.email
