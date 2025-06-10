@@ -9,35 +9,35 @@ from custom_auth.models import ROLE_CHOICES, Artist, Fan, Venue
 
 from allauth.account.auth_backends import AuthenticationBackend as AllauthBackend
 
+from allauth.account.adapter import get_adapter
+from rest_framework.response import Response
+from social_auth.serializers import CustomSocialLoginSerializer
+
 
 class CustomSocialLoginBase(SocialLoginView):
-    def save_user(self, request, sociallogin, form=None):
+    serializer_class = CustomSocialLoginSerializer
 
-        try:
-            if request.content_type == 'application/json':
-                data = json.loads(request.body)
-            else:
-                data = request.POST
-        except Exception:
-            raise ValidationError({"role": "Invalid request data."})
+    def save_user(self, request, sociallogin, form=None):
+        data = request.data
 
         role = data.get("role")
         valid_roles = [ROLE_CHOICES.ARTIST,
                        ROLE_CHOICES.VENUE, ROLE_CHOICES.FAN]
 
-        if role not in valid_roles:
+        if not role or role not in valid_roles:
             raise ValidationError({
                 "role": f"Role is required and must be one of {valid_roles}."
             })
 
         user = super().save_user(request, sociallogin, form)
+
         if not hasattr(user, 'backend') or user.backend is None:
-            user.backend = AllauthBackend.__module__ + '.' + AllauthBackend.__name__
+            from allauth.account.auth_backends import AuthenticationBackend
+            user.backend = f"{AuthenticationBackend.__module__}.{AuthenticationBackend.__name__}"
 
         user.role = role
         user.save()
 
-        # Create profile
         if role == ROLE_CHOICES.ARTIST:
             Artist.objects.get_or_create(user=user)
         elif role == ROLE_CHOICES.VENUE:
@@ -46,6 +46,15 @@ class CustomSocialLoginBase(SocialLoginView):
             Fan.objects.get_or_create(user=user)
 
         return user
+
+    def get_response(self):
+        original_response = super().get_response()
+        user = self.user
+
+        return Response({
+            "key": original_response.data.get("key"),
+            "role": user.role 
+        })
 
 
 class CustomGoogleLogin(CustomSocialLoginBase):
