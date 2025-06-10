@@ -37,8 +37,9 @@ ALLOWED_HOSTS = [
     '16.171.237.96',
     '0.0.0.0',
     '172.31.31.43',
-    '7eaf-223-123-14-195.ngrok-free.app',
+    '3d2c-39-38-211-158.ngrok-free.app',
     'app.gigspotvb.com',
+    'chilly-taxis-wear.loca.lt'
     'gigspot-ws-alb-1735954155.eu-north-1.elb.amazonaws.com',
     'socket.gigspotvb.com',
 ]

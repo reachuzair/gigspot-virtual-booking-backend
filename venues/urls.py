@@ -1,26 +1,12 @@
-
 from django.urls import path
-from rest_framework.routers import DefaultRouter
-from .views import (
-    LikeEventView,
-    UserLikedEventsView,
-    VenueListView,
-    EventListCreateView,
-    EventDetailView,
-    UpcomingEventsView
-)
+from .views import VenueListView, VenueDetailView
 
-# Create a router for API endpoints
-router = DefaultRouter()
+app_name = 'venues'
 
 urlpatterns = [
+    # List all venues with filtering and search
+    path('', VenueListView.as_view(), name='venue-list'),
     
-    path('venues/', VenueListView.as_view(), name='venue-list'),
-    path('events/', EventListCreateView.as_view(), name='event-list'),
-    path('events/upcoming/', UpcomingEventsView.as_view(), name='upcoming-events'),
-    path('events/<int:pk>/', EventDetailView.as_view(), name='event-detail'),
-    path('events/<int:event_id>/like/', LikeEventView.as_view(), name='event-like'),
-    path('events/likes/', UserLikedEventsView.as_view(), name='user-liked-events'),
+    # Get details for a specific venue
+    path('<int:id>/', VenueDetailView.as_view(), name='venue-detail'),
 ]
-
-urlpatterns += router.urls
