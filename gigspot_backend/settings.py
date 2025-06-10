@@ -89,11 +89,49 @@ SITE_ID = 1
 
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1', 'password2']
+ACCOUNT_UNIQUE_EMAIL = True
 
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_ADAPTER = 'social_auth.adapters.CustomSocialAccountAdapter'
 
+SOCIALACCOUNT_PROVIDERS = {
+    'apple': {
+        'APP': {
+            'client_id': os.getenv('APPLE_SERVICE_ID'),
+            'secret': os.getenv('APPLE_PRIVATE_KEY'),
+            'key': os.getenv('APPLE_KEY_ID'),
+            'team_id': os.getenv('APPLE_TEAM_ID'),
+            'certificate_key': os.getenv('APPLE_PRIVATE_KEY_PEM'),
+        }
+    },
+    'google': {
+        'APP': {
+            'client_id': os.getenv('GOOGLE_CLIENT_ID'),
+            'secret': os.getenv('GOOGLE_CLIENT_SECRET'),
+        },
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+    },
+    'facebook': {
+        'APP': {
+            'client_id': os.getenv('FACEBOOK_APP_ID'),
+            'secret': os.getenv('FACEBOOK_APP_SECRET'),
+        },
+        'METHOD': 'oauth2',
+        'SCOPE': ['email', 'public_profile'],
+        'AUTH_PARAMS': {'auth_type': 'reauthenticate'},
+        'INIT_PARAMS': {'cookie': True},
+        'FIELDS': ['id', 'email', 'name', 'first_name', 'last_name', 'verified'],
+        'EXCHANGE_TOKEN': True,
+        'VERIFIED_EMAIL': True,
+        'VERSION': 'v13.0',
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

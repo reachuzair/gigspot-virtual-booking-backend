@@ -169,6 +169,14 @@ class Venue(models.Model):
     location = models.JSONField(default=list)
     capacity = models.IntegerField(default=0)
     amenities = models.JSONField(default=list)
+    PROOF_CHOICES = [
+        ('DOCUMENT', 'Document'),
+        ('URL', 'URL'),
+    ]
+
+    proof_type = models.CharField(max_length=10, choices=PROOF_CHOICES, null=True, blank=True)
+    proof_document = models.FileField(upload_to='venue_proofs/', null=True, blank=True)
+    proof_url = models.URLField(null=True, blank=True)
     seating_plan = models.ImageField(
         upload_to='venue_seating_plan', blank=True, null=True)
     reservation_fee = models.DecimalField(

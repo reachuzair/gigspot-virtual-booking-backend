@@ -10,6 +10,7 @@ from utils.email import send_templated_email
 from django.utils import timezone
 from payments.utils import create_stripe_account
 from django.db import transaction
+from django.contrib.auth.backends import ModelBackend
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,26 @@ def signup(request):
                     state=profile_data.get("state"),
                 )
             elif role == ROLE_CHOICES.VENUE:
-                venue = Venue.objects.create(user=user, **profile_data)
+
+                proof_type = profile_data.get("proof_type")
+                proof_document = profile_data.get(
+                    "proof_document") if proof_type == "DOCUMENT" else None
+                proof_url = profile_data.get(
+                    "proof_url") if proof_type == "URL" else None
+
+                # Remove proof fields from profile_data to avoid duplication/conflict in **profile_data
+                profile_data_cleaned = {
+                    k: v for k, v in profile_data.items()
+                    if k not in ["proof_type", "proof_document", "proof_url"]
+                }
+
+                venue = Venue.objects.create(
+                    user=user,
+                    proof_type=proof_type,
+                    proof_document=proof_document,
+                    proof_url=proof_url,
+                    **profile_data_cleaned
+                )
             elif role == ROLE_CHOICES.FAN:
                 fan = Fan.objects.create(user=user)
 
@@ -75,7 +95,7 @@ def signup(request):
         elif role == ROLE_CHOICES.VENUE:
             response_data['venue'] = VenueSerializer(venue).data
         elif role == ROLE_CHOICES.FAN:
-            response_data['fan'] = FanSerializer(fan).data  # fan already created above
+            response_data['fan'] = FanSerializer(fan).data
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -146,7 +166,8 @@ def login_view(request):
 
         if not user.email_verified:
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
-
+        if not hasattr(user, 'backend') or user.backend is None:
+            user.backend = ModelBackend.__module__ + '.' + ModelBackend.__name__
         login(request, user)
 
         return Response({"detail": "Login successful", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
