@@ -1219,3 +1219,25 @@ def signed_events(request):
         } for contract in contracts
     ]
     return Response({'signed_events': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def artist_event_history(request):
+    user = request.user
+    if not hasattr(user, 'artist'):
+        return Response({'detail': 'Only artists can access event history.'}, status=403)
+
+    artist_user = user
+    gigs = Gig.objects.filter(
+        event_date__lt=timezone.now()
+    ).filter(
+        Q(created_by=artist_user) | Q(collaborators=artist_user)
+    ).distinct().order_by('-event_date')
+
+    serializer = GigDetailSerializer(gigs, many=True, context={'request': request})
+
+    return Response({
+        "count": len(serializer.data),
+        "events": serializer.data
+    })

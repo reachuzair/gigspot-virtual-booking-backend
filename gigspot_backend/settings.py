@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     'chat',
     'venues',
     'social_auth',
+    'analytics',
 ]
 
 AUTHENTICATION_BACKENDS = [
