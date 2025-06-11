@@ -13,6 +13,7 @@ urlpatterns = [
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
     path('event-history/', artist_event_history, name='event_history'),
+    path('sign-contract/<int:contract_id>/', sign_contract, name='sign_contract'),
 
     # Gig actions
     path('initiate/', initiate_gig, name='initiate_gig'),
@@ -46,7 +47,7 @@ urlpatterns = [
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
 
      # Contract signing
-     
+
     path('requests/submitted/', submitted_requests, name='submitted-requests'),
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='signed-events'),
