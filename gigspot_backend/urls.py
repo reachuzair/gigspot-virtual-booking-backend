@@ -36,5 +36,6 @@ urlpatterns = [
     path('api/payments/', include('payments.urls')),
     path('api/social_auth/', include('social_auth.urls')),
     path('api/analytics/', include('analytics.urls')),
+    path('api/fan/', include('fan.urls')),
     path('api/chat/', include('chat.urls'))
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

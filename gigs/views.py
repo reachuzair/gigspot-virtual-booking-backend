@@ -397,7 +397,8 @@ class UserLikedGigsView(APIView):
 
 class UpcomingGigsView(generics.ListAPIView):
     """
-    List all upcoming gigs (both artist and venue gigs)
+    List upcoming gigs. If user is a FAN and ?artist_id=<id> is provided,
+    return gigs for that artist only.
     """
     serializer_class = GigSerializer
     permission_classes = [IsAuthenticated]
@@ -410,10 +411,18 @@ class UpcomingGigsView(generics.ListAPIView):
 
     def get_queryset(self):
         now = timezone.now()
-        return Gig.objects.filter(
-            event_date__gte=now,
-            status='approved'
-        ).order_by('event_date')
+        user = self.request.user
+        artist_id = self.kwargs.get('artist_id')
+
+        queryset = Gig.objects.filter(event_date__gte=now, status='approved')
+        if user.role == ROLE_CHOICES.FAN and artist_id:
+            queryset = queryset.filter(
+                collaborators__id=artist_id
+            ) | queryset.filter(
+                created_by__id=artist_id
+            )
+
+        return queryset.distinct().order_by('event_date')
 
 
 @api_view(['POST'])

@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     'venues',
     'social_auth',
     'analytics',
+    'fan',
 ]
 
 AUTHENTICATION_BACKENDS = [

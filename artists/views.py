@@ -1,8 +1,9 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from custom_auth.models import Artist
+from custom_auth.models import ROLE_CHOICES, Artist, SubscriptionTier
 from .serializers import ArtistSerializer
 
 from rest_framework.pagination import PageNumberPagination
@@ -58,3 +59,4 @@ def get_artist(request, artist_id):
     artist_serializer = ArtistSerializer(artist)
     response_data = artist_serializer.data
     return Response(response_data)
+
