@@ -1,3 +1,4 @@
+from .models import Gig, Status, GigType
 import io
 import math
 import random
@@ -1150,6 +1151,7 @@ def validate_ticket_price(request):
         'tier': performance_tier.label if hasattr(performance_tier, 'label') else performance_tier
     })
 
+
 class GigByCityView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1159,5 +1161,117 @@ class GigByCityView(APIView):
             return Response({"detail": "City parameter is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         gigs = Gig.objects.filter(venue__city__iexact=city)
-        serializer = GigDetailSerializer(gigs, many=True, context={'request': request})
+        serializer = GigDetailSerializer(
+            gigs, many=True, context={'request': request})
         return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def submitted_requests(request):
+    user = request.user
+    invites = GigInvite.objects.filter(
+        user=user).select_related('gig', 'artist_received')
+    data = [
+        {
+            'gig_id': invite.gig.id,
+            'gig_title': invite.gig.title,
+            'artist': invite.artist_received.user.name,
+            'status': invite.status,
+            'sent_at': invite.created_at
+        } for invite in invites
+    ]
+    return Response({'submitted_requests': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_requests(request):
+    user = request.user
+    if not hasattr(user, 'artist'):
+        return Response({'detail': 'Only artists can view received requests.'}, status=403)
+
+    invites = GigInvite.objects.filter(
+        artist_received=user.artist).select_related('gig', 'user')
+    data = [
+        {
+            'gig_id': invite.gig.id,
+            'gig_title': invite.gig.title,
+            'sent_by': invite.user.name,
+            'status': invite.status,
+            'received_at': invite.created_at
+        } for invite in invites
+    ]
+    return Response({'my_requests': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def signed_events(request):
+    user = request.user
+    role_field = 'venue' if hasattr(
+        user, 'venue') else 'artist' if hasattr(user, 'artist') else None
+
+    if not role_field:
+        return Response({'detail': 'Only artists or venues can view signed events.'}, status=403)
+
+    role_obj = getattr(user, role_field)
+    contracts = Contract.objects.filter(
+        artist_signed=True, **{role_field: role_obj}).select_related('gig')
+    data = [
+        {
+            'contract_id': contract.id,
+            'gig_id': contract.gig.id,
+            'gig_title': contract.gig.title,
+            'event_date': contract.gig.event_date,
+            'signed_at': contract.updated_at,
+            'price': contract.price
+        } for contract in contracts
+    ]
+    return Response({'signed_events': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def artist_event_history(request):
+    user = request.user
+    if not hasattr(user, 'artist'):
+        return Response({'detail': 'Only artists can access event history.'}, status=403)
+
+    artist_user = user
+    gigs = Gig.objects.filter(
+        event_date__lt=timezone.now()
+    ).filter(
+        Q(created_by=artist_user) | Q(collaborators=artist_user)
+    ).distinct().order_by('-event_date')
+
+    serializer = GigDetailSerializer(
+        gigs, many=True, context={'request': request})
+
+    return Response({
+        "count": len(serializer.data),
+        "events": serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def pending_venue_gigs(request):
+    user = request.user
+
+    if not hasattr(user, 'venue') or not user.venue:
+        return Response({'detail': 'Only venue users can view pending gigs.'}, status=403)
+    
+    pending_gigs = Gig.objects.filter(
+        venue=user.venue,
+        status=Status.PENDING,
+        gig_type=GigType.ARTIST_GIG
+    ).order_by('-created_at')
+
+    serializer = GigSerializer(
+        pending_gigs, many=True, context={'request': request})
+
+    return Response({
+        "count": pending_gigs.count(),
+        "pending_gigs": serializer.data
+    })

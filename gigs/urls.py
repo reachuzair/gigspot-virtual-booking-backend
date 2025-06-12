@@ -1,8 +1,8 @@
 from django.urls import path
 from .views import (
-    GigByCityView, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView,
+    GigByCityView, artist_event_history, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
-    initiate_gig, add_gig_type, add_gig_details, update_gig_status,
+    initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
     create_venue_event, add_gig_venue_fee, validate_ticket_price
 )
@@ -12,6 +12,8 @@ urlpatterns = [
     path('', list_gigs, name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
+    path('event-history/', artist_event_history, name='event_history'),
+    path('sign-contract/<int:contract_id>/', sign_contract, name='sign_contract'),
 
     # Gig actions
     path('initiate/', initiate_gig, name='initiate_gig'),
@@ -31,6 +33,7 @@ urlpatterns = [
     path('<int:id>/add-details/', add_gig_details, name='add_gig_details'),
     path('<int:id>/status/', update_gig_status, name='update_gig_status'),
     path('<int:id>/venue-fee/', add_gig_venue_fee, name='add_gig_venue_fee'),
+    path('pending-gigs/', pending_venue_gigs, name='pending_venue_gigs'),
 
     # Invitations
     path('<int:id>/invite/', send_invite_request, name='send_invite_request'),
@@ -43,4 +46,10 @@ urlpatterns = [
     path('venue/events/create/', create_venue_event, name='create_venue_event'),
     # Filter Gig by City
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
+
+     # Contract signing
+
+    path('requests/submitted/', submitted_requests, name='submitted-requests'),
+    path('requests/received/', my_requests, name='my-requests'),
+    path('events/signed/', signed_events, name='signed-events'),
 ]
