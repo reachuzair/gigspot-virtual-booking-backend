@@ -662,6 +662,7 @@ def add_gig_details(request, id):
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
     try:
+        print("Fetching gig with ID:", id)
         gig = Gig.objects.get(id=id)
         print("gig:", gig)
     except Gig.DoesNotExist:
@@ -675,8 +676,9 @@ def add_gig_details(request, id):
 
     if max_tickets == 0:
         return Response({'detail': 'max_tickets cannot be zero'}, status=status.HTTP_400_BAD_REQUEST)
-    print("user", user)
-    venue = Venue.objects.get(user_id=user.id)
+    print("venue", gig.venue_id)
+    venue = Venue.objects.get(id=gig.venue_id)
+    print("venue:", venue)
 
     if max_tickets > venue.capacity:
         return Response({'detail': 'Max tickets value exceeds venue capacity'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1261,7 +1263,7 @@ def pending_venue_gigs(request):
 
     if not hasattr(user, 'venue') or not user.venue:
         return Response({'detail': 'Only venue users can view pending gigs.'}, status=403)
-    
+
     pending_gigs = Gig.objects.filter(
         venue=user.venue,
         status=Status.PENDING,
