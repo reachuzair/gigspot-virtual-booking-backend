@@ -1261,8 +1261,7 @@ def pending_venue_gigs(request):
 
     if not hasattr(user, 'venue') or not user.venue:
         return Response({'detail': 'Only venue users can view pending gigs.'}, status=403)
-    print(
-        f"Fetching pending gigs for venue: {user.venue.id}")
+    
     pending_gigs = Gig.objects.filter(
         venue=user.venue,
         status=Status.PENDING,
