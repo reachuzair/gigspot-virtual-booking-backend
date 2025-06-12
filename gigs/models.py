@@ -40,7 +40,7 @@ class Gig(models.Model):
         max_length=20, choices=GigType.choices, default=None)
     # Core fields
     title = models.CharField(
-        max_length=255, help_text='Title of the gig/event', default="",blank=True)
+        max_length=255, help_text='Title of the gig/event', default="", blank=True)
     description = models.TextField(blank=True, null=True, default="")
     event_date = models.DateTimeField(default=timezone.now)
     booking_start_date = models.DateTimeField(null=True, blank=True)
@@ -97,7 +97,7 @@ class Gig(models.Model):
     ticket_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0.0,
+        default=5.0,
         validators=[MinValueValidator(0)],
         null=True,
         blank=True
@@ -171,7 +171,6 @@ class Gig(models.Model):
             validation = validate_ticket_price(creator_tier, self.ticket_price)
             if not validation['is_valid']:
                 raise PricingValidationError(validation['message'])
-
 
     def requires_price_confirmation(self, price=None):
         """
