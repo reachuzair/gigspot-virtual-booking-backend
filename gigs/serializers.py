@@ -64,7 +64,7 @@ class GigSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'sold_out', 'slot_available', 'created_at',
-            'updated_at', 'expires_at', 'created_by', 'venue', 'is_liked',
+            'updated_at', 'expires_at',  'is_liked',
             'user', 'name', 'max_artist', 'flyer_image', 'flyer_bg', 'flyer_bg_url'
         ]
 

@@ -40,7 +40,7 @@ class Gig(models.Model):
         max_length=20, choices=GigType.choices, default=None)
     # Core fields
     title = models.CharField(
-        max_length=255, help_text='Title of the gig/event', default="")
+        max_length=255, help_text='Title of the gig/event', default="",blank=True)
     description = models.TextField(blank=True, null=True, default="")
     event_date = models.DateTimeField(default=timezone.now)
     booking_start_date = models.DateTimeField(null=True, blank=True)
