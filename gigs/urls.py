@@ -11,6 +11,7 @@ urlpatterns = [
     # Gig listing and details
     path('', list_gigs, name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
+    path('upcoming/<int:artist_id>/', UpcomingGigsView.as_view(), name='artist_upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
     path('event-history/', artist_event_history, name='event_history'),
     path('sign-contract/<int:contract_id>/', sign_contract, name='sign_contract'),
