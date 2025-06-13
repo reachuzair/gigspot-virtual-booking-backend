@@ -1,9 +1,11 @@
+import stripe
+
+from gigspot_backend import settings
 from .models import Gig, Status, GigType
 import io
 import math
 import random
 import string
-
 from django.core.cache import cache
 from django.db.models import Q, Prefetch, Count
 from django.shortcuts import get_object_or_404
@@ -1052,29 +1054,47 @@ def sign_contract(request, contract_id):
             contract = Contract.objects.get(id=contract_id, recipient=user)
             if not contract:
                 return Response({'detail': 'You are not authorized to sign this contract'}, status=status.HTTP_403_FORBIDDEN)
-
     except Contract.DoesNotExist:
         return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
-
     contract.signer = user
     contract.is_signed = True
     contract.save()
+
     if user.role == ROLE_CHOICES.ARTIST:
-        # Calculate amounts
-        amount = contract.price * 100  # in cents
-        application_fee = application_fee * 100  # in cents
+
+        collaborators = list(contract.gig.collaborators.all())
+        if user not in collaborators:
+            collaborators.append(user)
+            
+        total_artists = len(collaborators)
+
+        if total_artists == 1:
+            reason = "Only one artist involved. Full amount sent to venue."
+        elif total_artists == 2:
+            reason = "Two artists involved. 50% amount sent to first collaborator."
+        else:
+            reason = f"{total_artists} artists involved. Full amount sent to first collaborator."
 
         intent = stripe.PaymentIntent.create(
-            amount=amount,
+            amount=(
+                int(contract.price * 100) if total_artists == 1 else
+                int((contract.price * 100) // 2) if total_artists == 2 else
+                int(contract.price * 100)
+            ),
             currency="usd",
-            application_fee_amount=application_fee,
             transfer_data={
-                "destination": contract.venue.stripe_account_id,
+                "destination": (
+                    contract.venue.stripe_account_id if total_artists == 1 else
+                    collaborators[0].stripe_account_id
+                )
             },
             metadata={
                 "contract_id": contract.id,
                 "payment_intent_for": "contract_signature",
-                "is_host": is_host
+                "is_host": is_host,
+                "total_artists": total_artists,
+                "payout_reason": reason,
+                "initiated_by_user": str(user.id),
             }
         )
 
@@ -1082,6 +1102,7 @@ def sign_contract(request, contract_id):
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
         })
+
 
     return Response({'detail': 'Contract signed successfully', }, status=status.HTTP_200_OK)
 
