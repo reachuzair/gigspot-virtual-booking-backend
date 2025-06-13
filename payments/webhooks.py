@@ -1,17 +1,19 @@
+"""
+Webhook handlers for Stripe payment events.
+
+This module handles Stripe webhook events related to payments.
+"""
 import logging
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import permission_classes
+from rest_framework.permissions import AllowAny
 from django.conf import settings
-import stripe
-from .models import Payment, Payout, BankAccount, PayoutStatus
-from custom_auth.models import Artist, Fan
-from gigs.models import Gig
-from .helpers import handle_account_update
+from django.utils import timezone
+
+from .stripe_client import stripe
+from .models import Payment, PaymentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,129 +21,152 @@ logger = logging.getLogger(__name__)
 @require_http_methods(['POST'])
 @permission_classes([AllowAny])
 def stripe_webhook(request):
-
+    """
+    Handle Stripe webhook events for payments.
+    
+    This view processes payment-related Stripe webhook events.
+    """
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-    webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', '')
+    webhook_secret = settings.STRIPE_WEBHOOK_SECRET
     
     if not webhook_secret:
         logger.error('STRIPE_WEBHOOK_SECRET is not set in settings')
-        return JsonResponse({'error': 'Webhook configuration error'}, status=500)
+        return JsonResponse(
+            {'error': 'Webhook configuration error'}, 
+            status=500
+        )
     
     try:
         event = stripe.Webhook.construct_event(
-            payload, sig_header, webhook_secret
+            payload, 
+            sig_header, 
+            webhook_secret
         )
     except ValueError as e:
-        logger.error(f'⚠️  Webhook error while parsing request: {str(e)}')
-        return JsonResponse({'error': 'Invalid payload'}, status=400)
+        logger.error(f'Webhook error while parsing request: {str(e)}')
+        return JsonResponse(
+            {'error': 'Invalid payload'}, 
+            status=400
+        )
     except stripe.error.SignatureVerificationError as e:
-        logger.error(f'⚠️  Webhook signature verification failed: {str(e)}')
-        return JsonResponse({'error': 'Invalid signature'}, status=400)
+        logger.error(f'Webhook signature verification failed: {str(e)}')
+        return JsonResponse(
+            {'error': 'Invalid signature'}, 
+            status=400
+        )
     except Exception as e:
-        logger.error(f'Unexpected error in webhook: {str(e)}')
-        return JsonResponse({'error': 'Webhook handler failed'}, status=500)
-
-    logger.info(f'Received Stripe event: {event.type}')
-
-    if event.type == 'payment_intent.succeeded':
-        logger.info('Processing payment_intent.succeeded event')
-        handle_payment_success(event.data.object)
+        logger.error(f'Unexpected error in webhook: {str(e)}', exc_info=True)
+        return JsonResponse(
+            {'error': 'Webhook processing failed'},
+            status=400
+        )
     
-    elif event.type == 'account.updated':
-        logger.info('Processing account.updated event')
-        handle_account_update(event.data.object)
+    # Handle the event
+    event_type = event['type']
+    logger.info(f'Received webhook event: {event_type}')
     
-    elif event.type == 'account.external_account.updated':
+    try:
+        if event_type == 'payment_intent.succeeded':
+            handle_payment_success(event['data']['object'])
+        elif event_type == 'payment_intent.payment_failed':
+            handle_payment_failure(event['data']['object'])
+        elif event_type in ['charge.succeeded', 'charge.failed']:
+            handle_charge_event(event['data']['object'])
+        else:
+            logger.info(f'Unhandled event type: {event_type}')
+            
+        return JsonResponse({'status': 'success'})
         
-        external_account = event.data.object
-        bank_account_id = external_account.get('id')
-        
-        try:
-            bank_account = BankAccount.objects.get(stripe_bank_account_id=bank_account_id)
-            bank_account.is_verified = external_account.get('status') == 'verified'
-            bank_account.last_verification_attempt = timezone.now()
-            
-            if external_account.get('status') == 'verification_failed':
-                bank_account.verification_fail_reason = external_account.get('verification', {}).get('details')
-            
-            bank_account.save()
-            logger.info(f'Updated bank account {bank_account_id} verification status to {bank_account.is_verified}')
-            
-        except BankAccount.DoesNotExist:
-            logger.warning(f'Bank account not found: {bank_account_id}')
-    
-    elif event.type == 'payout.paid':
-        # Handle successful payout
-        payout_data = event.data.object
-        try:
-            payout = Payout.objects.get(stripe_payout_id=payout_data['id'])
-            payout.status = PayoutStatus.PAID
-            payout.completed_at = timezone.now()
-            payout.save()
-            logger.info(f'Payout {payout.id} marked as paid')
-        except Payout.DoesNotExist:
-            logger.warning(f'Payout not found: {payout_data["id"]}')
-    
-    elif event.type == 'payout.failed':
-        # Handle failed payout
-        payout_data = event.data.object
-        try:
-            payout = Payout.objects.get(stripe_payout_id=payout_data['id'])
-            payout.status = PayoutStatus.FAILED
-            payout.failure_message = payout_data.get('failure_message', 'Unknown error')
-            payout.save()
-            logger.warning(f'Payout {payout.id} failed: {payout.failure_message}')
-        except Payout.DoesNotExist:
-            logger.warning(f'Payout not found: {payout_data["id"]}')
-    
-    elif event.type == 'payout.canceled':
-        # Handle canceled payout
-        payout_data = event.data.object
-        try:
-            payout = Payout.objects.get(stripe_payout_id=payout_data['id'])
-            payout.status = PayoutStatus.CANCELED
-            payout.save()
-            logger.info(f'Payout {payout.id} was canceled')
-        except Payout.DoesNotExist:
-            logger.warning(f'Payout not found: {payout_data["id"]}')
-    
-    # Return a 200 response to acknowledge receipt of the webhook
-    return JsonResponse({'status': 'success'})
+    except Exception as e:
+        logger.error(f'Error handling webhook event {event_type}: {str(e)}', exc_info=True)
+        return JsonResponse(
+            {'error': 'Error processing webhook'}, 
+            status=400
+        )
 
 def handle_payment_success(payment_intent):
-
+    """
+    Handle successful payment intent.
+    
+    Args:
+        payment_intent: The Stripe payment intent object
+    """
     try:
-        logger.info(f'Processing successful payment: {payment_intent["id"]}')
+        payment_intent_id = payment_intent.get('id')
+        amount = payment_intent.get('amount')
+        currency = payment_intent.get('currency')
         
-        # Get metadata from payment intent
-        metadata = payment_intent.get('metadata', {})
-        gig_id = metadata.get('gig_id')
-        fan_id = metadata.get('fan_id')
-        quantity = int(metadata.get('quantity', 1))
-        
-        if not gig_id or not fan_id:
-            logger.error('Missing gig_id or fan_id in payment intent metadata')
-            return
-        
-        # Get related objects
-        gig = Gig.objects.get(id=gig_id)
-        fan = Fan.objects.get(id=fan_id)
-        
-        # Create payment record
-        payment = Payment.objects.create(
-            gig=gig,
-            fan=fan,
-            amount=payment_intent['amount'] / 100,  # Convert from cents
-            stripe_payment_intent_id=payment_intent['id'],
-            status='succeeded',
-            metadata=metadata
-        )
-        
-        logger.info(f'Created payment record: {payment.id}')
-        
-        # TODO: Add any additional processing here (e.g., create tickets, send notifications)
-        
+        # Update payment status in database
+        try:
+            payment = Payment.objects.get(reference_id=payment_intent_id)
+            payment.status = PaymentStatus.COMPLETED
+            payment.save(update_fields=['status', 'updated_at'])
+            
+            logger.info(f'Payment {payment_intent_id} marked as completed')
+            
+        except Payment.DoesNotExist:
+            logger.warning(f'Payment not found for intent: {payment_intent_id}')
+            
     except Exception as e:
-        logger.error(f'Error processing payment success: {str(e)}')
-        raise  # Re-raise to ensure it's logged by the webhook handler
+        logger.error(f'Error handling payment success: {str(e)}', exc_info=True)
+        raise
+
+def handle_payment_failure(payment_intent):
+    """
+    Handle failed payment intent.
+    
+    Args:
+        payment_intent: The failed Stripe payment intent object
+    """
+    try:
+        payment_intent_id = payment_intent.get('id')
+        last_payment_error = payment_intent.get('last_payment_error', {})
+        
+        # Update payment status in database
+        try:
+            payment = Payment.objects.get(reference_id=payment_intent_id)
+            payment.status = PaymentStatus.FAILED
+            payment.metadata = payment.metadata or {}
+            payment.metadata['failure_reason'] = last_payment_error.get('message', 'Unknown error')
+            payment.metadata['failure_code'] = last_payment_error.get('code')
+            payment.save(update_fields=['status', 'metadata', 'updated_at'])
+            
+            logger.warning(f'Payment {payment_intent_id} failed: {last_payment_error.get("message")}')
+            
+        except Payment.DoesNotExist:
+            logger.warning(f'Payment not found for failed intent: {payment_intent_id}')
+            
+    except Exception as e:
+        logger.error(f'Error handling payment failure: {str(e)}', exc_info=True)
+        raise
+
+def handle_charge_event(charge):
+    """
+    Handle charge events from Stripe.
+    
+    Args:
+        charge: The Stripe charge object
+    """
+    try:
+        charge_id = charge.get('id')
+        payment_intent_id = charge.get('payment_intent')
+        
+        if not payment_intent_id:
+            logger.info(f'No payment intent ID found for charge {charge_id}')
+            return
+            
+        # Update payment with charge details if needed
+        try:
+            payment = Payment.objects.get(reference_id=payment_intent_id)
+            if not payment.charge_id:
+                payment.charge_id = charge_id
+                payment.save(update_fields=['charge_id', 'updated_at'])
+                logger.info(f'Updated payment {payment_intent_id} with charge ID {charge_id}')
+                
+        except Payment.DoesNotExist:
+            logger.warning(f'Payment not found for charge: {payment_intent_id}')
+            
+    except Exception as e:
+        logger.error(f'Error handling charge event: {str(e)}', exc_info=True)
+        raise

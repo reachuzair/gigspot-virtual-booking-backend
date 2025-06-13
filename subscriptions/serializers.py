@@ -7,6 +7,28 @@ from .models import (
     VenueAdPlan, VenueSubscription
 )
 
+class SubscriptionPlanResponseSerializer(serializers.Serializer):
+    """Serializer for the subscription plans API response"""
+    id = serializers.IntegerField()
+    subscription_tier = serializers.CharField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    billing_interval = serializers.CharField()
+    features = serializers.DictField()
+
+    def to_representation(self, instance):
+        # Get features from FEATURE_MAP or use empty dict
+        features = {}
+        if hasattr(instance, 'FEATURE_MAP') and instance.subscription_tier in instance.FEATURE_MAP:
+            features = instance.FEATURE_MAP[instance.subscription_tier].get('features', {})
+        
+        return {
+            'id': instance.id,
+            'subscription_tier': instance.subscription_tier,
+            'price': str(instance.price),  # Convert to string to avoid Decimal serialization issues
+            'billing_interval': instance.billing_interval,
+            'features': features
+        }
+
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubscriptionPlan
