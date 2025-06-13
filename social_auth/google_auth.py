@@ -5,51 +5,49 @@ from django.db import transaction
 
 User = get_user_model()
 
+
 class GoogleAuthBackend:
     def authenticate(self, request, google_token=None, **kwargs):
         if not google_token:
             return None
 
-        # Step 1: Verify the token with Google
         try:
-            response = requests.get(
-                'https://oauth2.googleapis.com/tokeninfo',
-                params={'id_token': google_token},
-                timeout=5  # optional timeout for safety
+            token_info = requests.get(
+                'https://www.googleapis.com/oauth2/v1/tokeninfo',
+                params={'access_token': google_token},
+                timeout=5
             )
-            if response.status_code != 200:
+            if token_info.status_code != 200:
                 return None
 
-            data = response.json()
-            email = data.get('email')
+            email = token_info.json().get('email')
             if not email:
                 return None
+            profile_resp = requests.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                headers={'Authorization': f'Bearer {google_token}'},
+                timeout=5
+            )
+            if profile_resp.status_code != 200:
+                return None
+
+            profile = profile_resp.json()
+            full_name = profile.get('name', '').strip()
+            picture = profile.get('picture')
+
         except Exception:
             return None
-
-        # Step 2: Get or create user
         try:
             user = User.objects.get(email=email)
         except ObjectDoesNotExist:
             with transaction.atomic():
                 user = User.objects.create_user(
                     email=email,
-                    username=email,
-                    first_name=data.get('given_name', ''),
-                    last_name=data.get('family_name', ''),
-                    is_active=True,
+                    name=full_name,
+                    is_active=True
                 )
-
-        # Step 3: Update basic info on every login
-        user.first_name = data.get('given_name', '')
-        user.last_name = data.get('family_name', '')
+        user.name = full_name or user.name
         user.is_active = True
         user.save()
-
+        user._google_picture_url = picture
         return user
-
-    def get_user(self, user_id):
-        try:
-            return User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            return None
