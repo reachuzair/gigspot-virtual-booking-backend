@@ -123,6 +123,13 @@ class SubscriptionPlan(models.Model):
     def save(self, *args, **kwargs):
         self.features = self.FEATURE_MAP.get(self.subscription_tier, {})
         super().save(*args, **kwargs)
+        
+    def can_create_tour(self):
+        """
+        Check if the artist can create a tour based on their subscription.
+        Only premium users can create tours.
+        """
+        return self.subscription_tier == 'PREMIUM' and self.status == 'active'
 
 class VenueAdTier(models.TextChoices):
     STARTER = 'STARTER', 'Starter'

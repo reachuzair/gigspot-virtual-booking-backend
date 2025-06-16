@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.core.files.storage import default_storage
 
-from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus
+from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourStatus
 from users.serializers import UserSerializer
 from custom_auth.models import User, Venue, Artist, PerformanceTier
 
@@ -28,6 +28,35 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'email', 'name', 'role', 'profileImage']
         read_only_fields = ['id', 'email', 'name', 'role', 'profileImage']
 
+class TourSerializer(serializers.ModelSerializer):
+    """Serializer for Tour model"""
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    gigs_count = serializers.IntegerField(read_only=True)
+    cities = serializers.ListField(child=serializers.CharField(), read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = Tour
+        fields = [
+            'id', 'title', 'description', 'artist', 'start_date', 'end_date',
+            'status', 'status_display', 'is_featured', 'gigs_count', 'cities',
+            'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'artist']
+    
+    def validate(self, attrs):
+        """Validate tour dates"""
+        start_date = attrs.get('start_date')
+        end_date = attrs.get('end_date')
+        
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError({
+                'end_date': 'End date must be after start date.'
+            })
+        
+        return attrs
+
+
 class GigSerializer(serializers.ModelSerializer):
     """Serializer for Gig model with proper field handling and serialization."""
     
@@ -40,6 +69,9 @@ class GigSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     max_artist = serializers.SerializerMethodField()
     price_validation = serializers.SerializerMethodField()
+    is_part_of_tour = serializers.BooleanField(read_only=True)
+    tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
+    tour_order = serializers.IntegerField(required=False, allow_null=True)
     
     class Meta:
         model = Gig
@@ -54,6 +86,9 @@ class GigSerializer(serializers.ModelSerializer):
             
             # Related fields
             'venue', 'created_by', 
+            
+            # Tour fields
+            'is_part_of_tour', 'tour', 'tour_order',
             
             # Computed fields
             'is_liked', 'user', 'name', 'max_artist'
@@ -87,6 +122,37 @@ class GigSerializer(serializers.ModelSerializer):
     def get_user(self, obj):
         """Return the ID of the user who created the gig."""
         return obj.created_by.id if obj.created_by else None
+        
+    def validate(self, attrs):
+        """Validate gig data based on gig type"""
+        gig_type = attrs.get('gig_type', self.instance.gig_type if self.instance else None)
+        
+        # For tour gigs, ensure they have a tour and are of type TOUR_GIG
+        if attrs.get('tour') or (self.instance and self.instance.tour):
+            if gig_type != GigType.TOUR_GIG:
+                attrs['gig_type'] = GigType.TOUR_GIG
+            attrs['is_part_of_tour'] = True
+            
+            # Ensure tour order is set for tour gigs
+            if 'tour_order' not in attrs and (not self.instance or not self.instance.tour_order):
+                tour = attrs.get('tour') or (self.instance.tour if self.instance else None)
+                if tour:
+                    last_order = Gig.objects.filter(tour=tour).aggregate(
+                        models.Max('tour_order')
+                    )['tour_order__max'] or 0
+                    attrs['tour_order'] = last_order + 1
+        
+        # For non-tour artist gigs, ensure they don't have tour fields
+        elif gig_type == GigType.ARTIST_GIG:
+            if 'tour' in attrs and attrs['tour'] is not None:
+                raise serializers.ValidationError({
+                    'tour': 'Cannot assign a tour to a non-tour gig.'
+                })
+            attrs['is_part_of_tour'] = False
+            attrs['tour'] = None
+            attrs['tour_order'] = None
+        
+        return attrs
     
     def get_name(self, obj):
         """Return the title of the gig as the name (for backward compatibility)."""

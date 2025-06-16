@@ -2,8 +2,12 @@ from django.db import models
 from django.core.validators import MinValueValidator
 from custom_auth.models import Artist, Venue, User, PerformanceTier
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 from .utils import validate_ticket_price, PricingValidationError
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def event_flyer_path(instance, filename):
     # Generate a unique filename for event flyers
@@ -26,13 +30,154 @@ class GenreChoices(models.TextChoices):
     
 
 class GigType(models.TextChoices):
-    ARTIST_GIG = 'artist_gig', 'Artist Gig'  # Created by artist
+    ARTIST_GIG = 'artist_gig', 'Artist Gig'  # Created by artist using "Create a Show"
     VENUE_GIG = 'venue_gig', 'Venue Gig'     # Created by venue
+    TOUR_GIG = 'tour_gig', 'Tour Gig'        # Part of a tour (artist-created multi-city)
+
+
+class TourStatus(models.TextChoices):
+    DRAFT = 'draft', 'Draft'
+    PLANNING = 'planning', 'Planning'
+    ANNOUNCED = 'announced', 'Announced'
+    IN_PROGRESS = 'in_progress', 'In Progress'
+    COMPLETED = 'completed', 'Completed'
+    CANCELLED = 'cancelled', 'Cancelled'
+
+
+class VehicleType(models.TextChoices):
+    CAR = 'car', 'Car'
+    VAN = 'van', 'Van'
+    BUS = 'bus', 'Bus'
+    FLIGHT = 'flight', 'Flight'
+    TRAIN = 'train', 'Train'
+    OTHER = 'other', 'Other'
+
+
+class Tour(models.Model):
+    """Model for managing multi-city tours"""
+    id = models.AutoField(primary_key=True)
+    title = models.CharField(max_length=255, help_text='Name of the tour')
+    
+    # Tour planning fields
+    vehicle_type = models.CharField(
+        max_length=20,
+        choices=VehicleType.choices,
+        default=VehicleType.CAR,
+        help_text='Type of vehicle for travel between cities'
+    )
+    driving_range_km = models.PositiveIntegerField(
+        default=100,
+        help_text='Maximum driving distance in kilometers between tour stops',
+        validators=[MinValueValidator(1)]
+    )
+    selected_states = models.JSONField(
+        default=list,
+        help_text='List of state names selected for the tour'
+    )
+    selected_cities = models.JSONField(
+        default=list,
+        help_text='List of city names selected for the tour'
+    )
+    description = models.TextField(blank=True, null=True)
+    artist = models.ForeignKey(
+        Artist,
+        on_delete=models.CASCADE,
+        related_name='tours',
+        help_text='The artist/band going on tour'
+    )
+    start_date = models.DateField(help_text='Tour start date')
+    end_date = models.DateField(help_text='Tour end date')
+    status = models.CharField(
+        max_length=20,
+        choices=TourStatus.choices,
+        default=TourStatus.DRAFT,
+        help_text='Current status of the tour'
+    )
+    is_featured = models.BooleanField(
+        default=False,
+        help_text='Whether this tour is featured on the platform'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-start_date', 'title']
+        verbose_name = 'Tour'
+        verbose_name_plural = 'Tours'
+
+    def __str__(self):
+        return f"{self.title} - {self.artist.user.name} ({self.start_date.year})"
+    
+    def clean(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError({
+                'end_date': 'End date must be after start date.'
+            })
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+    
+    @property
+    def gigs_count(self):
+        """Return the number of gigs in this tour"""
+        return self.gigs.count()
+    
+    @property
+    def cities(self):
+        """Return a list of unique cities in this tour"""
+        from django.db.models import F
+        return list(set(
+            self.gigs.filter(venue__isnull=False)
+                   .exclude(venue__address__isnull=True)
+                   .exclude(venue__address__exact='')
+                   .annotate(city=models.functions.Substr(
+                       'venue__address',
+                       1,
+                       models.functions.StrIndex('venue__address', models.Value(',')) - 1
+                   ))
+                   .values_list('city', flat=True)
+        ))
+    
+    @property
+    def is_active(self):
+        """Check if the tour is currently active"""
+        today = timezone.now().date()
+        return self.start_date <= today <= self.end_date and self.status == TourStatus.ANNOUNCED
 
 class Gig(models.Model):
+    """Model for individual gigs/shows, which can be standalone or part of a tour"""
     id = models.AutoField(primary_key=True)
+    
     # Gig type and basic info
-    gig_type = models.CharField(max_length=20, choices=GigType.choices, default=None)
+    gig_type = models.CharField(
+        max_length=20,
+        choices=GigType.choices,
+        default=GigType.ARTIST_GIG,
+        help_text='Type of gig (artist-created, venue-created, or part of a tour)'
+    )
+    
+    # Tour related fields
+    is_part_of_tour = models.BooleanField(
+        default=False,
+        help_text='Whether this gig is part of a tour',
+        db_index=True
+    )
+    tour = models.ForeignKey(
+        Tour,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='gigs',
+        help_text='The tour this gig belongs to, if any'
+    )
+    tour_order = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='The order of this gig in the tour sequence',
+        db_index=True
+    )
+    
     # Core fields
     title = models.CharField(max_length=255, help_text='Title of the gig/event', default="")
     description = models.TextField(blank=True, null=True, default="")
@@ -149,7 +294,7 @@ class Gig(models.Model):
         Validate the model before saving.
         Ensures ticket price meets the minimum requirements for artist-hosted shows.
         """
-        if self.gig_type == self.GigType.ARTIST_GIG and self.ticket_price is not None:
+        if self.gig_type == self.gig_type.ARTIST_GIG and self.ticket_price is not None:
             # Get the creator's performance tier (default to FRESH_TALENT if not set)
             creator_tier = PerformanceTier.FRESH_TALENT
             if hasattr(self.created_by, 'artist') and self.created_by.artist:
@@ -272,3 +417,54 @@ class GigInvite(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+class VehicleType(models.TextChoices):
+    """Types of vehicles that can be used for tour travel"""
+    CAR = 'car', 'Car'
+    VAN = 'van', 'Van'
+    BUS = 'bus', 'Bus'
+    FLIGHT = 'flight', 'Flight'
+    TRAIN = 'train', 'Train'
+    OTHER = 'other', 'Other'
+
+
+class TourVenueSuggestion(models.Model):
+    """Model for storing venue suggestions for tour stops"""
+    tour = models.ForeignKey(
+        Tour,
+        on_delete=models.CASCADE,
+        related_name='suggested_venues',
+        help_text='The tour this suggestion is for'
+    )
+    venue = models.ForeignKey(
+        Venue,
+        on_delete=models.CASCADE,
+        related_name='tour_suggestions',
+        help_text='The suggested venue'
+    )
+    event_date = models.DateField(
+        help_text='Scheduled date for the show at this venue',
+        default=timezone.now
+    )
+    is_booked = models.BooleanField(
+        default=False,
+        help_text='Whether this venue has been booked for the tour'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['tour', 'event_date']
+        unique_together = ['tour', 'venue']
+        verbose_name = 'Tour Venue Suggestion'
+        verbose_name_plural = 'Tour Venue Suggestions'
+
+    def __str__(self):
+        return f"{self.venue.name} for {self.tour.title} on {self.event_date}"
+    
+    @classmethod
+    def get_booked_venues(cls, tour_id):
+        """Get all booked venues for a tour, ordered by event date"""
+        return cls.objects.filter(
+            tour_id=tour_id,
+            is_booked=True
+        ).select_related('venue').order_by('event_date')
