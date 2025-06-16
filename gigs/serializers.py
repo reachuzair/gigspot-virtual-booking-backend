@@ -160,6 +160,12 @@ class GigSerializer(serializers.ModelSerializer):
 
         return super().create(validated_data)
 
+    def update(self, instance, validated_data):
+        flyer_bg = self.context['request'].FILES.get('flyer_bg')
+        if flyer_bg:
+            validated_data['flyer_image'] = flyer_bg
+        return super().update(instance, validated_data)
+
 
 class GigInviteSerializer(serializers.ModelSerializer):
     """
