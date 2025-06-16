@@ -1,4 +1,5 @@
 # views.py
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -22,7 +23,13 @@ def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({"detail": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            
+            error_messages = []
+            for field, messages in serializer.errors.items():
+                label = "Error" if field == "__all__" else field
+                for msg in messages:
+                    error_messages.append(f"{label}: {msg}")
+            return Response(" | ".join(error_messages), status=status.HTTP_400_BAD_REQUEST)
 
         role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
         stripe_response = None
@@ -45,14 +52,12 @@ def signup(request):
                     state=profile_data.get("state"),
                 )
             elif role == ROLE_CHOICES.VENUE:
-
                 proof_type = profile_data.get("proof_type")
                 proof_document = profile_data.get(
                     "proof_document") if proof_type == "DOCUMENT" else None
                 proof_url = profile_data.get(
                     "proof_url") if proof_type == "URL" else None
 
-                # Remove proof fields from profile_data to avoid duplication/conflict in **profile_data
                 profile_data_cleaned = {
                     k: v for k, v in profile_data.items()
                     if k not in ["proof_type", "proof_document", "proof_url"]
@@ -68,13 +73,13 @@ def signup(request):
             elif role == ROLE_CHOICES.FAN:
                 fan = Fan.objects.create(user=user)
 
-            # 3. Create Stripe Account (if Artist/Venue)
+            # 3. Create Stripe Account
             if role in [ROLE_CHOICES.ARTIST, ROLE_CHOICES.VENUE]:
                 stripe_response = create_stripe_account(request, user)
                 if not stripe_response:
                     raise Exception('Stripe account creation failed')
 
-                # 4. Update Artist/Venue with Stripe ID
+                # 4. Save Stripe ID
                 if role == ROLE_CHOICES.ARTIST:
                     artist.stripe_account_id = stripe_response['stripe_account'].id
                     artist.save()
@@ -82,14 +87,13 @@ def signup(request):
                     venue.stripe_account_id = stripe_response['stripe_account'].id
                     venue.save()
 
-        # Prepare response data
+        # Response data
         response_data = {
             'user': UserSerializer(user).data,
             'stripe_account': stripe_response['stripe_account'].id if stripe_response else None,
             'link': stripe_response['link'].url if stripe_response else None,
         }
 
-        # Add profile data by role
         if role == ROLE_CHOICES.ARTIST:
             response_data['artist'] = ArtistSerializer(artist).data
         elif role == ROLE_CHOICES.VENUE:
@@ -100,7 +104,7 @@ def signup(request):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(str(e), status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT'])

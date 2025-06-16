@@ -669,44 +669,60 @@ def add_gig_type(request, id):
 def add_gig_details(request, id):
     user = request.user
 
-    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
-        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    if user.role not in [ROLE_CHOICES.VENUE, ROLE_CHOICES.ARTIST]:
+        return Response("Unauthorized: only Venue or Artist can perform this action.",
+                        status=status.HTTP_401_UNAUTHORIZED)
 
     try:
-        print("Fetching gig with ID:", id)
         gig = Gig.objects.get(id=id)
-        print("gig:", gig)
     except Gig.DoesNotExist:
-        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(f'Gig with ID {id} not found.', status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response(f'Error fetching gig: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     data = request.data.copy()
-    # If flyer_bg is present in FILES, add it to data
+
     if 'flyer_bg' in request.FILES:
         data['flyer_bg'] = request.FILES['flyer_bg']
-    max_tickets = int(data.get('max_tickets', 0))
 
-    if max_tickets == 0:
-        return Response({'detail': 'max_tickets cannot be zero'}, status=status.HTTP_400_BAD_REQUEST)
-    print("venue", gig.venue_id)
-    venue = Venue.objects.get(id=gig.venue_id)
-    print("venue:", venue)
+    try:
+        max_tickets = int(data.get('max_tickets', 0))
+    except ValueError:
+        return Response('max_tickets must be an integer.', status=status.HTTP_400_BAD_REQUEST)
+
+    if max_tickets <= 0:
+        return Response('max_tickets must be greater than zero.', status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        venue = Venue.objects.get(id=gig.venue_id)
+    except Venue.DoesNotExist:
+        return Response(f'Venue with ID {gig.venue_id} not found.', status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response(f'Error fetching venue: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     if max_tickets > venue.capacity:
-        return Response({'detail': 'Max tickets value exceeds venue capacity'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(f'Max tickets value ({max_tickets}) exceeds venue capacity ({venue.capacity}).',
+                        status=status.HTTP_400_BAD_REQUEST)
+
     data['max_artist'] = venue.artist_capacity
 
-    serializer = GigSerializer(
-        gig, data=data, partial=True, context={"request": request})
+    serializer = GigSerializer(gig, data=data, partial=True, context={"request": request})
     if serializer.is_valid():
         gig = serializer.save()
-        create_notification(request.user, 'system',
-                            'Gig created successfully', **gig.__dict__)
+        create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
         return Response({
             'gig': serializer.data,
             'message': 'Gig created successfully'
         }, status=status.HTTP_201_CREATED)
 
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    error_messages = []
+    for field, messages in serializer.errors.items():
+        label = "Error" if field == "__all__" else field
+        for msg in messages:
+            error_messages.append(f"{label}: {msg}")
+
+    return Response(" | ".join(error_messages), status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT'])
