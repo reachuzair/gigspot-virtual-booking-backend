@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    GigByCityView, artist_event_history, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
+    GigByCityView, artist_event_history, get_contract_by_gig, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
@@ -28,6 +28,7 @@ urlpatterns = [
     path('<int:gig_id>/contract/generate/',
          generate_contract, name='generate_contract'),
     path('contract/<int:contract_id>/', get_contract, name='get_contract'),
+    path('contract/gig/<int:gig_id>/', get_contract_by_gig, name='get_contract_by_gig_artist'),
 
     # Gig management
     path('<int:id>/type/', add_gig_type, name='add_gig_type'),

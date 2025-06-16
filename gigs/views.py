@@ -564,7 +564,6 @@ def initiate_gig(request):
                 {'detail': 'Invalid request data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         user = request.user
 
         if not hasattr(user, 'role') or user.role not in [ROLE_CHOICES.VENUE, ROLE_CHOICES.ARTIST]:
@@ -1049,6 +1048,32 @@ def get_contract(request, contract_id):
 
     serializer = ContractSerializer(contract)
     return Response({'contract': serializer.data})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_contract_by_gig(request, gig_id):
+    user = request.user
+
+    if user.role != ROLE_CHOICES.ARTIST:
+        return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        artist = Artist.objects.get(user=user)
+        gig = Gig.objects.get(id=gig_id)
+        contracts = Contract.objects.filter(gig=gig, artist=artist).order_by('-created_at')
+
+        if not contracts.exists():
+            return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        contract = contracts.first()
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = ContractSerializer(contract)
+    return Response({'contract': serializer.data})
+
 
 
 @api_view(['PUT'])
