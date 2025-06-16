@@ -25,7 +25,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
-
+from PIL import ImageFont, ImageDraw
 from custom_auth.models import ROLE_CHOICES, Venue, Artist, User, PerformanceTier
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
@@ -706,16 +706,17 @@ def add_gig_details(request, id):
 
     data['max_artist'] = venue.artist_capacity
 
-    serializer = GigSerializer(gig, data=data, partial=True, context={"request": request})
+    serializer = GigSerializer(
+        gig, data=data, partial=True, context={"request": request})
     if serializer.is_valid():
         gig = serializer.save()
-        create_notification(request.user, 'system', 'Gig created successfully', **gig.__dict__)
+        create_notification(request.user, 'system',
+                            'Gig created successfully', **gig.__dict__)
         return Response({
             'gig': serializer.data,
             'message': 'Gig created successfully'
         }, status=status.HTTP_201_CREATED)
 
-    
     error_messages = []
     for field, messages in serializer.errors.items():
         label = "Error" if field == "__all__" else field
@@ -845,12 +846,12 @@ def generate_contract_pdf(contract):
     elements.append(
         Paragraph(f"Contract Date: {contract.created_at.date()}", content_style))
 
-    requests_to_artist = [
-        req for req in contract.request_message.split('. ') if req.strip()]
+    # requests_to_artist = [
+    #     req for req in contract.request_message.split('. ') if req.strip()]
 
-    elements.append(Spacer(1, 20))
-    for req in requests_to_artist:
-        elements.append(Paragraph(req, content_style))
+    # elements.append(Spacer(1, 20))
+    # for req in requests_to_artist:
+    #     elements.append(Paragraph(req, content_style))
 
     # Add terms and conditions
     terms = [
@@ -934,16 +935,16 @@ def generate_contract_image(contract):
     y += small_spacing
 
     # Requests to Artist (split at '. ')
-    requests_to_artist = [
-        req for req in contract.request_message.split('. ') if req.strip()]
-    if requests_to_artist:
-        y += 12
-        draw.text((50, y), "Requests to Venue:",
-                  font=font_content, fill=(0, 0, 0))
-        y += small_spacing
-        for req in requests_to_artist:
-            draw.text((70, y), f"- {req}", font=font_content, fill=(0, 0, 0))
-            y += small_spacing
+    # requests_to_artist = [
+    #     req for req in contract.request_message.split('. ') if req.strip()]
+    # if requests_to_artist:
+    #     y += 12
+    #     draw.text((50, y), "Requests to Venue:",
+    #               font=font_content, fill=(0, 0, 0))
+    #     y += small_spacing
+    #     for req in requests_to_artist:
+    #         draw.text((70, y), f"- {req}", font=font_content, fill=(0, 0, 0))
+    #         y += small_spacing
 
     # Terms and conditions
     terms = [
@@ -989,16 +990,17 @@ def generate_contract(request, gig_id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        artist = Artist.objects.get(user=gig.user.id)
+        artist = Artist.objects.get(user=gig.created_by.id)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        venue = Venue.objects.get(id=gig.venue)
+        venue = Venue.objects.get(id=gig.venue_id)
     except Venue.DoesNotExist:
         return Response({'detail': 'Venue not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
+
         # Create a new contract (adjust fields as needed)
         contract = Contract.objects.create(
             artist=artist,  # assuming user has an artist profile
@@ -1019,7 +1021,7 @@ def generate_contract(request, gig_id):
 
         # Return the PDF as response
         pdf_buffer.seek(0)
-        return Response({'contract': {'id': contract.id, 'artist': artist.user.name, 'venue': venue.user.name, 'gig': gig.name, 'pdf_url': contract.pdf.url, 'image_url': contract.image.url}}, status=status.HTTP_200_OK)
+        return Response({'contract': {'id': contract.id, 'artist': artist.user.name, 'venue': venue.user.name, 'gig': gig.id, 'pdf_url': contract.pdf.url, 'image_url': contract.image.url}}, status=status.HTTP_200_OK)
 
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1080,7 +1082,7 @@ def sign_contract(request, contract_id):
         collaborators = list(contract.gig.collaborators.all())
         if user not in collaborators:
             collaborators.append(user)
-            
+
         total_artists = len(collaborators)
 
         if total_artists == 1:
@@ -1117,7 +1119,6 @@ def sign_contract(request, contract_id):
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id
         })
-
 
     return Response({'detail': 'Contract signed successfully', }, status=status.HTTP_200_OK)
 
