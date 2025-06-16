@@ -989,7 +989,6 @@ def generate_contract(request, gig_id):
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        print(model_to_dict(gig))
         artist = Artist.objects.get(user=gig.user.id)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
