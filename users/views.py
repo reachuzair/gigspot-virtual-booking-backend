@@ -32,6 +32,17 @@ def user_profile(request):
                 artist, exclude=['verification_docs', 'logo'])
             artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs else None
             artist_data['logo'] = artist.logo.url if artist.logo else None
+            
+            # Default to 'free' tier
+            artist_data['subscription_tier'] = 'free'
+            
+            # Update to 'premium' if they have an active premium subscription
+            if hasattr(artist, 'subscription') and artist.subscription:
+                if artist.subscription.status == 'active' and hasattr(artist.subscription, 'plan'):
+                    # Ensure we only set 'premium' for actual premium subscriptions
+                    if artist.subscription.plan.subscription_tier.upper() == 'PREMIUM':
+                        artist_data['subscription_tier'] = 'premium'
+                
             return artist_data
 
         def get_venue_data(venue):
@@ -176,51 +187,79 @@ def delete_user(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_artist_soundcharts_uuid(request):
+    """
+    Update the artist's SoundCharts UUID and update their performance tier.
+    """
     try:
         user = request.user
         soundcharts_uuid = request.data.get('soundcharts_uuid')
 
         if not soundcharts_uuid:
-            return Response({"detail": "Soundcharts UUID is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Soundcharts UUID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Check if user has an artist role
         if user.role != 'artist':
-            return Response({"detail": "User is not an artist"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "User is not an artist"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         # Get or create artist record
         artist, created = Artist.objects.get_or_create(user=user)
         
         # Only update if UUID has changed
         if artist.soundcharts_uuid == soundcharts_uuid:
-            return Response({"detail": "Soundcharts UUID is already set to this value"}, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "detail": "Soundcharts UUID is already set to this value",
+                    "tier": artist.get_performance_tier_display(),
+                    "last_updated": artist.last_tier_update
+                }, 
+                status=status.HTTP_200_OK
+            )
             
         # Update UUID
         artist.soundcharts_uuid = soundcharts_uuid
         
-        # Fetch and update metrics from SoundCharts
-        result = artist.update_metrics_from_soundcharts()
+        # Get tier from SoundCharts
+        from services.soundcharts import SoundChartsAPI
+        soundcharts = SoundChartsAPI()
+        result = soundcharts.get_artist_tier(soundcharts_uuid)
         
-        if not result.get('success'):
-            # Save the UUID even if metrics update fails, but include a warning
+        if 'error' in result:
+            # Save the UUID even if tier update fails, but include a warning
             artist.save()
-            return Response({
-                "detail": "Soundcharts UUID saved, but failed to fetch metrics",
-                "error": result.get('error', 'Unknown error')
-            }, status=status.HTTP_200_OK)
-            
-        return Response({
-            "detail": "Soundcharts UUID and artist metrics updated successfully",
-            "metrics": {
+            return Response(
+                {
+                    "detail": "Soundcharts UUID saved, but failed to update tier",
+                    "error": result.get('error', 'Unknown error')
+                }, 
+                status=status.HTTP_200_OK
+            )
+        
+        # Update artist tier and save
+        artist.performance_tier = result['tier']
+        artist.last_tier_update = timezone.now()
+        artist.save()
+        
+        return Response(
+            {
+                "detail": "Soundcharts UUID and artist tier updated successfully",
                 "tier": artist.get_performance_tier_display(),
-                "followers": artist.followers,
-                "monthly_listeners": artist.monthly_listeners,
-                "total_streams": artist.total_streams,
-                "last_updated": artist.last_metrics_update
-            }
-        }, status=status.HTTP_200_OK)
+                "last_updated": artist.last_tier_update
+            }, 
+            status=status.HTTP_200_OK
+        )
         
     except Exception as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"Error updating SoundCharts UUID: {str(e)}")
+        return Response(
+            {"detail": "An error occurred while updating SoundCharts UUID"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['GET'])
