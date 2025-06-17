@@ -1,3 +1,5 @@
+from asyncio.log import logger
+from datetime import timedelta
 import stripe
 
 from gigspot_backend import settings
@@ -1049,6 +1051,7 @@ def get_contract(request, contract_id):
     serializer = ContractSerializer(contract)
     return Response({'contract': serializer.data})
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_contract_by_gig(request, gig_id):
@@ -1060,7 +1063,8 @@ def get_contract_by_gig(request, gig_id):
     try:
         artist = Artist.objects.get(user=user)
         gig = Gig.objects.get(id=gig_id)
-        contracts = Contract.objects.filter(gig=gig, artist=artist).order_by('-created_at')
+        contracts = Contract.objects.filter(
+            gig=gig, artist=artist).order_by('-created_at')
 
         if not contracts.exists():
             return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1075,35 +1079,43 @@ def get_contract_by_gig(request, gig_id):
     return Response({'contract': serializer.data})
 
 
-
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def sign_contract(request, contract_id):
     user = request.user
-    contract_pin = request.data.get('contract_pin', None)
+    contract_pin = request.data.get('contract_pin')
     application_fee = int(request.data.get('application_fee', 0))
     is_host = request.data.get('is_host', False)
 
-    if not contract_pin:
-        return Response({'detail': 'Contract pin is required'}, status=status.HTTP_400_BAD_REQUEST)
+    # Validate contract pin from cache
+    cached_pin = cache.get(f"contract_pin:{user.id}")
+    if not contract_pin or contract_pin != cached_pin:
+        return Response({'detail': 'Invalid or expired contract pin'}, status=400)
 
-    if user.contract_pin != contract_pin:
-        return Response({'detail': 'Invalid contract pin'}, status=status.HTTP_400_BAD_REQUEST)
+    # Clear pin after use
+    cache.delete(f"contract_pin:{user.id}")
 
+    # Get the correct contract based on role
     try:
-        contract = Contract.objects.get(id=contract_id, user=user)
-        if not contract:
-            contract = Contract.objects.get(id=contract_id, recipient=user)
-            if not contract:
-                return Response({'detail': 'You are not authorized to sign this contract'}, status=status.HTTP_403_FORBIDDEN)
+        if user.role == ROLE_CHOICES.ARTIST:
+            artist = Artist.objects.get(user=user)
+            contract = Contract.objects.get(id=contract_id, artist=artist)
+            contract.artist_signed = True
+        elif user.role == ROLE_CHOICES.VENUE:
+            venue = Venue.objects.get(user=user)
+            contract = Contract.objects.get(id=contract_id, venue=venue)
+            contract.venue_signed = True
+        else:
+            return Response({'detail': 'Unauthorized role'}, status=403)
+    except (Artist.DoesNotExist, Venue.DoesNotExist):
+        return Response({'detail': 'User profile not found'}, status=404)
     except Contract.DoesNotExist:
-        return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
-    contract.signer = user
-    contract.is_signed = True
+        return Response({'detail': 'Contract not found'}, status=404)
+
     contract.save()
 
+    # Handle artist payment intent
     if user.role == ROLE_CHOICES.ARTIST:
-
         collaborators = list(contract.gig.collaborators.all())
         if user not in collaborators:
             collaborators.append(user)
@@ -1116,7 +1128,8 @@ def sign_contract(request, contract_id):
             reason = "Two artists involved. 50% amount sent to first collaborator."
         else:
             reason = f"{total_artists} artists involved. Full amount sent to first collaborator."
-
+        logger.info(
+            f"contract.venue.stripe_account_id: {contract.venue.stripe_account_id}")
         intent = stripe.PaymentIntent.create(
             amount=(
                 int(contract.price * 100) if total_artists == 1 else
@@ -1145,17 +1158,33 @@ def sign_contract(request, contract_id):
             "payment_intent_id": intent.id
         })
 
-    return Response({'detail': 'Contract signed successfully', }, status=status.HTTP_200_OK)
+    return Response({'detail': 'Contract signed successfully'}, status=200)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_contract_pin(request):
-    # This endpoint is a no-op as per requirements
-    # The actual PIN generation and email sending is handled by the frontend
+    user = request.user
+    pin = str(random.randint(100000, 999999))
+
+    # Store the pin in cache for 60 minutes
+    cache.set(f"contract_pin:{user.id}", pin, timeout=60 * 60)  # 1 hour
+
+    # Send email
+    send_templated_email(
+        subject="Your Contract Verification PIN",
+        recipient_list=[user.email],
+        template_name="contract_pin",
+        context={
+            "name": user.name,
+            "pin": pin,
+            "message": "Your Contract PIN"
+        }
+    )
+
     return Response({
         'status': 'success',
-        'message': 'If the email exists in our system, a PIN has been sent.'
+        'message': 'A contract PIN has been sent to your email.'
     })
 
 
