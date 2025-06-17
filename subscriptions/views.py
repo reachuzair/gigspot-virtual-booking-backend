@@ -41,6 +41,45 @@ class UnifiedSubscriptionPlansView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    def _get_stripe_plans(self):
+        """Fetch all active subscription plans from Stripe"""
+        try:
+            # Get all active products
+            products = stripe.Product.list(active=True, limit=100)
+            
+            # Get all prices for these products
+            prices = stripe.Price.list(active=True, limit=100)
+            
+            # Organize prices by product
+            price_map = {}
+            for price in prices.auto_paging_iter():
+                if price.product not in price_map:
+                    price_map[price.product] = []
+                price_map[price.product].append(price)
+            
+            # Build plan details
+            stripe_plans = []
+            for product in products.auto_paging_iter():
+                product_prices = price_map.get(product.id, [])
+                for price in product_prices:
+                    interval = price.recurring.interval if hasattr(price, 'recurring') and price.recurring else 'one_time'
+                    stripe_plans.append({
+                        'id': price.id,
+                        'product_id': product.id,
+                        'name': product.name,
+                        'description': product.description or '',
+                        'amount': price.unit_amount / 100 if price.unit_amount else 0,
+                        'currency': price.currency.upper(),
+                        'interval': interval,
+                        'metadata': dict(price.metadata) if hasattr(price, 'metadata') else {}
+                    })
+            
+            return stripe_plans
+            
+        except stripe.error.StripeError as e:
+            print(f"Error fetching Stripe plans: {str(e)}")
+            return []
+    
     def _ensure_default_venue_plans_exist(self):
         """Ensure default venue plans exist in the database."""
         from .models import VenueAdPlan
@@ -122,17 +161,21 @@ class UnifiedSubscriptionPlansView(APIView):
     
     def get(self, request) -> Response:
         """
-        Retrieve all active subscription plans for artists and venues.
+        Retrieve all active subscription plans for artists and venues with Stripe details.
         
         Returns:
             Response: JSON response containing:
-                - artist_plans: List of available artist subscription plans
-                - venue_plans: List of available venue ad plans
+                - artist_plans: List of available artist subscription plans with Stripe details
+                - venue_plans: List of available venue ad plans with Stripe details
+                - stripe_plans: List of all active Stripe subscription plans
                 - has_active_subscription: Object indicating user's subscription status
         """
         try:
             # Ensure default venue plans exist
             self._ensure_default_venue_plans_exist()
+            
+            # Get Stripe plans
+            stripe_plans = self._get_stripe_plans()
             
             # Get only Free and Premium artist plans (case-insensitive match)
             artist_plans = list(SubscriptionPlan.objects.filter(
@@ -149,6 +192,10 @@ class UnifiedSubscriptionPlansView(APIView):
             # Filter out any plans that don't match our expected types
             artist_plans = [p for p in artist_plans if p.subscription_tier.upper() in ['FREE', 'PREMIUM']]
             venue_plans = [p for p in venue_plans if p.name.upper() in ['STARTER', 'BOOSTED', 'PREMIUM']]
+            
+            # Serialize plans
+            artist_plans_serializer = SubscriptionPlanSerializer(artist_plans, many=True)
+            venue_plans_serializer = VenueAdPlanSerializer(venue_plans, many=True)
             
             # Check user's subscription status for both artist and venue
             has_active_artist_sub = False
@@ -168,8 +215,9 @@ class UnifiedSubscriptionPlansView(APIView):
             
             # Format the response data
             response_data = {
-                'artist_plans': self._format_artist_plans(artist_plans),
-                'venue_plans': self._format_venue_plans(venue_plans),
+                'artist_plans': artist_plans_serializer.data,
+                'venue_plans': venue_plans_serializer.data,
+                'stripe_plans': stripe_plans,
                 'has_active_subscription': {
                     'artist': has_active_artist_sub,
                     'venue': has_active_venue_sub
