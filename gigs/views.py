@@ -1222,50 +1222,50 @@ def validate_ticket_price(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     try:
-            price = float(price)
-            if price < 0:
-                raise ValueError("Price cannot be negative")
-        except (ValueError, TypeError):
+        price = float(price)
+        if price < 0:
+            raise ValueError("Price cannot be negative")
+    except (ValueError, TypeError):
+        return Response(
+            {'detail': 'Invalid price format'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Get the user's performance tier (default to FRESH_TALENT if not an artist)
+    performance_tier = PerformanceTier.FRESH_TALENT
+    if hasattr(request.user, 'artist') and request.user.artist and request.user.artist.performance_tier:
+        performance_tier = request.user.artist.performance_tier
+
+    # If this is an update to an existing gig, get the gig
+    gig = None
+    if gig_id:
+        try:
+            gig = Gig.objects.get(id=gig_id, created_by=request.user)
+        except Gig.DoesNotExist:
             return Response(
-                {'detail': 'Invalid price format'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Get the user's performance tier (default to FRESH_TALENT if not an artist)
-        performance_tier = PerformanceTier.FRESH_TALENT
-        if hasattr(request.user, 'artist') and request.user.artist and request.user.artist.performance_tier:
-            performance_tier = request.user.artist.performance_tier
-
-        # If this is an update to an existing gig, get the gig
-        gig = None
-        if gig_id:
-            try:
-                gig = Gig.objects.get(id=gig_id, created_by=request.user)
-            except Gig.DoesNotExist:
-                return Response(
-                    {'detail': 'Gig not found or you do not have permission'},
+                {'detail': 'Gig not found or you do not have permission'},
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-        # Create a temporary gig for validation if needed
-        if not gig:
-            gig = Gig(
-                created_by=request.user,
-                gig_type=GigType.ARTIST_GIG,
-                ticket_price=price
+    # Create a temporary gig for validation if needed
+    if not gig:
+        gig = Gig(
+            created_by=request.user,
+            gig_type=GigType.ARTIST_GIG,
+            ticket_price=price
             )
-        else:
-            gig.ticket_price = price
+    else:
+        gig.ticket_price = price
 
-        # Get the validation result
-        validation_result = gig.requires_price_confirmation(price=price)
+    # Get the validation result
+    validation_result = gig.requires_price_confirmation(price=price)
 
-        return Response({
-            'is_valid': not validation_result['requires_confirmation'],
-            'message': validation_result['message'],
-            'suggested_range': validation_result['suggested_range'],
-            'tier': performance_tier.label if hasattr(performance_tier, 'label') else performance_tier
-        })
+    return Response({
+        'is_valid': not validation_result['requires_confirmation'],
+        'message': validation_result['message'],
+        'suggested_range': validation_result['suggested_range'],
+        'tier': performance_tier.label if hasattr(performance_tier, 'label') else performance_tier
+    })
 
 
 class TourVenueSuggestionsAPI(APIView):

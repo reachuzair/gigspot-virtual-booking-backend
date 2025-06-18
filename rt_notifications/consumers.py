@@ -32,13 +32,76 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        if data.get('type') == 'read_notification':
-            notification_id = data.get('notification_id')
-            await self.mark_notification_as_read(notification_id)
-        elif data.get('type') == 'notification':
-            notification_data = data.get('notification')
-            await self.notification(notification_data)
+        try:
+            # Debug: Log the raw incoming message
+            print(f"Raw WebSocket message received: {text_data}")
+            
+            # Clean the input if needed
+            if isinstance(text_data, bytes):
+                text_data = text_data.decode('utf-8')
+                
+            # Remove any null bytes or other problematic characters
+            text_data = text_data.strip('\x00')
+            
+            # Try to parse the JSON
+            try:
+                data = json.loads(text_data)
+            except json.JSONDecodeError as e:
+                # Try to find where the error is occurring
+                print(f"JSON decode error at position {e.pos}: {e.doc}")
+                print(f"Context: {e.doc[max(0, e.pos-20):min(len(e.doc), e.pos+20)]}")
+                raise
+                
+            if not isinstance(data, dict):
+                raise ValueError(f"Expected a JSON object, got {type(data).__name__}")
+                
+            message_type = data.get('type')
+            if not message_type:
+                raise ValueError("Missing 'type' in message")
+                
+            if message_type == 'read_notification':
+                notification_id = data.get('notification_id')
+                if not notification_id:
+                    raise ValueError("Missing 'notification_id' in read_notification message")
+                await self.mark_notification_as_read(notification_id)
+            elif message_type == 'notification':
+                notification_data = data.get('notification')
+                if not notification_data:
+                    raise ValueError("Missing 'notification' data in message")
+                if not isinstance(notification_data, dict):
+                    raise ValueError("Notification data must be an object")
+                await self.notification(notification_data)
+            else:
+                raise ValueError(f"Unknown message type: {message_type}")
+                
+        except json.JSONDecodeError as e:
+            error_msg = {
+                'type': 'error',
+                'message': 'Invalid JSON format',
+                'details': str(e),
+                'received': text_data[:100]  # Include first 100 chars of received data
+            }
+            print(f"JSON decode error: {error_msg}")
+            await self.send(text_data=json.dumps(error_msg))
+            
+        except ValueError as e:
+            error_msg = {
+                'type': 'error',
+                'message': 'Invalid message format',
+                'details': str(e)
+            }
+            print(f"Value error: {error_msg}")
+            await self.send(text_data=json.dumps(error_msg))
+            
+        except Exception as e:
+            error_msg = {
+                'type': 'error',
+                'message': 'Error processing message',
+                'details': str(e),
+                'error_type': type(e).__name__
+            }
+            print(f"Unexpected error: {error_msg}")
+            await self.send(text_data=json.dumps(error_msg))
 
     async def notification(self, event):
         try:
