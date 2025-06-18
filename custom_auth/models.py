@@ -878,6 +878,10 @@ class Venue(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    logo = models.ImageField(upload_to='venue_logos/', blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
 
     class Meta:
         ordering = ['-created_at']

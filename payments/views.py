@@ -1,4 +1,5 @@
-"""Views for handling payment processing."""
+
+from decimal import ROUND_HALF_UP, Decimal
 import logging
 import json
 from decimal import Decimal
@@ -10,11 +11,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from custom_auth.models import Artist
+from gigs.models import Gig
+from payments.models import Ticket
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser
-
 # Configure Stripe
 import stripe
+logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 logger = logging.getLogger(__name__)
 
@@ -278,8 +282,6 @@ class PaymentService:
             return {'error': 'Failed to process payment'}, status.HTTP_500_INTERNAL_SERVER_ERROR
     
 
-            
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -291,6 +293,7 @@ def create_payment_intent(request):
     from gigs.models import Gig, Ticket
     from subscriptions.models import SubscriptionPlan, VenueAdPlan
     """
+
     Create a payment intent for ticket purchases or subscriptions.
     
     Request format for gig ticket purchase (fans only):
@@ -526,6 +529,7 @@ def _get_or_create_customer(user, payment_method_id=None):
         logger.error(f'Error in _get_or_create_customer: {str(e)}')
         raise
 
+
 def list_tickets(request, gig_id):
     # Import models locally to prevent AppRegistryNotReady error
     from gigs.models import Ticket, Gig
@@ -534,6 +538,7 @@ def list_tickets(request, gig_id):
     List all tickets for a specific gig for the authenticated user.
     """
     try:
+
         # Verify the gig exists and is active
         try:
             gig = Gig.objects.get(id=gig_id, is_active=True)
@@ -568,6 +573,7 @@ def list_tickets(request, gig_id):
             'total_paid': str(ticket.total_paid)
         } for ticket in tickets]
         
+
         return Response({
             'gig': {
                 'id': gig.id,
@@ -578,10 +584,34 @@ def list_tickets(request, gig_id):
             },
             'tickets': ticket_data
         })
-        
+
     except Exception as e:
         logger.error(f'Error in list_tickets: {str(e)}')
         return Response(
             {'detail': 'An error occurred while retrieving tickets'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def capture_payment_intent(request):
+    """
+    Capture a previously created PaymentIntent that was authorized.
+    """
+    payment_intent_id = request.data.get('payment_intent_id')
+
+    if not payment_intent_id:
+        return Response({'detail': 'Payment Intent ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        intent = stripe.PaymentIntent.capture(payment_intent_id)
+        return Response({
+            'detail': 'Payment captured successfully.',
+            'payment_intent': intent
+        }, status=status.HTTP_200_OK)
+
+    except stripe.error.InvalidRequestError as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

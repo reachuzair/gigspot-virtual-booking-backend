@@ -3,9 +3,12 @@ from rest_framework import serializers
 from django.utils import timezone
 from django.core.files.storage import default_storage
 
+
 from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourStatus
+
 from users.serializers import UserSerializer
 from custom_auth.models import User, Venue, Artist, PerformanceTier
+
 
 class VenueSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
@@ -27,6 +30,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'email', 'name', 'role', 'profileImage']
         read_only_fields = ['id', 'email', 'name', 'role', 'profileImage']
+
 
 class TourSerializer(serializers.ModelSerializer):
     """Serializer for Tour model"""
@@ -55,6 +59,7 @@ class TourSerializer(serializers.ModelSerializer):
             })
         
         return attrs
+
 
 
 class GigSerializer(serializers.ModelSerializer):
@@ -329,4 +334,5 @@ class VenueEventSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
-        fields = ['id', 'artist', 'venue', 'gig', 'price', 'pdf', 'image', 'created_at', 'updated_at']
+        fields = ['id', 'artist', 'venue', 'gig', 'price',
+                  'pdf', 'image', 'created_at', 'updated_at']
