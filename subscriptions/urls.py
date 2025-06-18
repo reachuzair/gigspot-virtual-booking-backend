@@ -1,19 +1,26 @@
-# urls.py
+"""URL configuration for subscription endpoints."""
 from django.urls import path
 from .views import (
-    subscription_plans,
-    create_artist_subscription,
-    manage_artist_subscription,
-    payment_methods,
-    test_create_artist_subscription
+    UnifiedSubscriptionPlansView,
+    ArtistSubscriptionView,
+    VenueSubscriptionView,
+    manage_artist_subscription
 )
-# from .webhooks import stripe_webhook
+
+app_name = 'subscriptions'
 
 urlpatterns = [
-    path('plans/', subscription_plans, name='subscription-plans'),
-    path('create/', create_artist_subscription, name='create-subscription'),
-    path('test-create/', test_create_artist_subscription, name='test-create-subscription'),
-    path('manage/', manage_artist_subscription, name='manage-subscription'),
-    path('payment-methods/', payment_methods, name='payment-methods'),
-    # path('stripe/webhook/', stripe_webhook, name='stripe-webhook'),
+    # Unified subscription plans (includes both artist and venue plans)
+    path('plans/', UnifiedSubscriptionPlansView.as_view(), name='subscription-plans'),
+    
+    # Artist subscription management
+    path('artists/', ArtistSubscriptionView.as_view(), name='artist-subscription'),
+    path('artists/<int:pk>/', ArtistSubscriptionView.as_view(), name='artist-subscription-detail'),
+    
+    # Venue subscription management
+    path('venues/', VenueSubscriptionView.as_view(), name='venue-subscription'),
+    path('venues/<int:pk>/', VenueSubscriptionView.as_view(), name='venue-subscription-detail'),
+    
+    # Legacy endpoint (to be deprecated)
+    path('manage-artist-subscription/', manage_artist_subscription, name='manage-artist-subscription'),
 ]
