@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from custom_auth.models import ROLE_CHOICES
-from fan.models import FanTicketSerializer
+from .serializers import FanTicketSerializer
 from gigs.models import Gig
 from gigs.serializers import GigDetailSerializer
 from payments.models import Ticket
