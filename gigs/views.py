@@ -5,6 +5,7 @@ import stripe
 from gigspot_backend import settings
 from .models import Gig, Status, GigType
 import io
+import logging
 import math
 import random
 import string
@@ -26,20 +27,33 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from .models import TourStatus, TourVenueSuggestion
+from .serializers_tour import TourSerializer
+from custom_auth.permissions import IsPremiumUser
+
 from PIL import ImageFont, ImageDraw
+
 from custom_auth.models import ROLE_CHOICES, Venue, Artist, User, PerformanceTier
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
 
-from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus
+from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourVenueSuggestion
 from .serializers import (
     GigSerializer,
     ContractSerializer,
     VenueEventSerializer,
     GigDetailSerializer
 )
+from .serializers_tour import TourVenueSuggestionSerializer, BookedVenueSerializer
 from .utils import PricingValidationError
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 
@@ -1203,55 +1217,330 @@ def validate_ticket_price(request):
 
     if price is None:
         return Response(
-            {'detail': 'Price is required'},
+            {"error": "Price is required"},
+
             status=status.HTTP_400_BAD_REQUEST
         )
-
     try:
-        price = float(price)
-        if price < 0:
-            raise ValueError("Price cannot be negative")
-    except (ValueError, TypeError):
-        return Response(
-            {'detail': 'Invalid price format'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # Get the user's performance tier (default to FRESH_TALENT if not an artist)
-    performance_tier = PerformanceTier.FRESH_TALENT
-    if hasattr(request.user, 'artist') and request.user.artist and request.user.artist.performance_tier:
-        performance_tier = request.user.artist.performance_tier
-
-    # If this is an update to an existing gig, get the gig
-    gig = None
-    if gig_id:
-        try:
-            gig = Gig.objects.get(id=gig_id, created_by=request.user)
-        except Gig.DoesNotExist:
+            price = float(price)
+            if price < 0:
+                raise ValueError("Price cannot be negative")
+        except (ValueError, TypeError):
             return Response(
-                {'detail': 'Gig not found or you do not have permission'},
-                status=status.HTTP_404_NOT_FOUND
+                {'detail': 'Invalid price format'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-    # Create a temporary gig for validation if needed
-    if not gig:
-        gig = Gig(
-            created_by=request.user,
-            gig_type=GigType.ARTIST_GIG,
-            ticket_price=price
+        # Get the user's performance tier (default to FRESH_TALENT if not an artist)
+        performance_tier = PerformanceTier.FRESH_TALENT
+        if hasattr(request.user, 'artist') and request.user.artist and request.user.artist.performance_tier:
+            performance_tier = request.user.artist.performance_tier
+
+        # If this is an update to an existing gig, get the gig
+        gig = None
+        if gig_id:
+            try:
+                gig = Gig.objects.get(id=gig_id, created_by=request.user)
+            except Gig.DoesNotExist:
+                return Response(
+                    {'detail': 'Gig not found or you do not have permission'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Create a temporary gig for validation if needed
+        if not gig:
+            gig = Gig(
+                created_by=request.user,
+                gig_type=GigType.ARTIST_GIG,
+                ticket_price=price
+            )
+        else:
+            gig.ticket_price = price
+
+        # Get the validation result
+        validation_result = gig.requires_price_confirmation(price=price)
+
+        return Response({
+            'is_valid': not validation_result['requires_confirmation'],
+            'message': validation_result['message'],
+            'suggested_range': validation_result['suggested_range'],
+            'tier': performance_tier.label if hasattr(performance_tier, 'label') else performance_tier
+        })
+
+
+class TourVenueSuggestionsAPI(APIView):
+    """
+    API for managing venue suggestions for a tour.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tour_id):
+        """
+        Get venue suggestions for a tour based on criteria.
+        
+        Expected POST data:
+        {
+            "cities": ["New York", "Boston"],
+            "min_capacity": 100,  # optional
+            "max_capacity": 1000,  # optional
+            "venue_types": ["bar", "club"]  # optional
+        }
+        """
+
+        try:
+            # Debug logging
+            logger.info(f"Looking for tour_id={tour_id} for user={request.user.id} ({request.user.email})")
+            
+            # Get the tour and verify ownership
+            try:
+                tour = Tour.objects.get(id=tour_id, artist__user=request.user)
+                logger.info(f"Found tour: {tour.id} - {tour.title}")
+            except Tour.DoesNotExist:
+                logger.error(f"Tour not found or access denied. Tour ID: {tour_id}, User ID: {request.user.id}")
+                logger.error(f"Available tours for user: {list(Tour.objects.filter(artist__user=request.user).values_list('id', flat=True))}")
+                return Response(
+                    {"error": "Tour not found or you don't have permission to access it"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get filter parameters
+            cities = request.data.get('cities', [])
+            min_capacity = request.data.get('min_capacity')
+            max_capacity = request.data.get('max_capacity')
+            venue_types = request.data.get('venue_types', [])
+            
+            if not cities:
+                return Response(
+                    {"error": "At least one city is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Start with completed venues (assuming is_completed=True means venue is active/ready)
+            venues = Venue.objects.filter(is_completed=True)
+            logger.info(f"Found {venues.count()} completed venues")
+            
+            # Filter by cities in location field
+            city_filters = Q()
+            for city in cities:
+                city_filters |= Q(location__icontains=city.lower())
+            
+            if city_filters:
+                venues = venues.filter(city_filters)
+                logger.info(f"After city filter: {venues.count()} venues")
+            
+            # Apply additional filters if provided
+            if min_capacity is not None:
+                venues = venues.filter(capacity__gte=min_capacity)
+            if max_capacity is not None:
+                venues = venues.filter(capacity__lte=max_capacity)
+            # Note: venue_type filter is removed as it's not available in the Venue model
+            
+            # Create or update suggestions for these venues
+            suggestions = []
+            for venue in venues:
+                suggestion, _ = TourVenueSuggestion.objects.get_or_create(
+                    tour=tour,
+                    venue=venue,
+                    defaults={'event_date': timezone.now().date()}
+                )
+                suggestions.append(suggestion)
+            
+            # Serialize the response
+            serializer = TourVenueSuggestionSerializer(suggestions, many=True)
+            return Response({
+                "count": len(suggestions),
+                "results": serializer.data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in suggest_venues: {str(e)}", exc_info=True)
+            return Response(
+
+                {"error": "An error occurred while processing your request"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class TourViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows tours to be viewed or edited.
+    Requires a premium subscription for all operations except listing and retrieving.
+    """
+    serializer_class = TourSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        Read operations are allowed for all authenticated users,
+        while write operations require a premium subscription.
+        """
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated, IsPremiumUser]
+        return [permission() for permission in permission_classes]
+        
+    def has_incomplete_tour(self, artist):
+        """Check if artist has any incomplete tours"""
+        return Tour.objects.filter(
+            artist=artist,
+            status__in=[
+                TourStatus.DRAFT,
+                TourStatus.PLANNING,
+                TourStatus.ANNOUNCED,
+                TourStatus.IN_PROGRESS
+            ]
+        ).exists()
+
+    def has_unconfirmed_booking(self, artist):
+        """Check if artist has any unconfirmed tour bookings"""
+        return TourVenueSuggestion.objects.filter(
+            tour__artist=artist,
+            is_booked=False
+        ).exists()
+
+    def perform_create(self, serializer):
+        """
+        Set the current user as the tour creator and verify:
+        1. They have an active premium subscription
+        2. They don't have any incomplete tours
+        3. They don't have any unconfirmed bookings
+        """
+        artist = self.request.user.artist_profile
+        
+        # Check premium subscription
+        if not hasattr(artist, 'subscription') or not artist.subscription.can_create_tour():
+            raise serializers.ValidationError(
+                "A premium subscription is required to create tours."
+            )
+            
+        # Check for incomplete tours
+        if self.has_incomplete_tour(artist):
+            raise serializers.ValidationError(
+                "You already have an incomplete tour. Please complete or cancel it before creating a new one."
+            )
+            
+        # Check for unconfirmed bookings
+        if self.has_unconfirmed_booking(artist):
+            raise serializers.ValidationError(
+                "You have unconfirmed venue bookings. Please confirm or cancel them before creating a new tour."
+            )
+            
+        serializer.save(artist=artist)
+        
+    def perform_update(self, serializer):
+        """
+        Verify the user has an active premium subscription before updating a tour.
+        """
+        artist = self.request.user.artist_profile
+        if not hasattr(artist, 'subscription') or not artist.subscription.can_create_tour():
+            raise serializers.ValidationError(
+                "A premium subscription is required to modify tours."
+            )
+        serializer.save()
+    
+    def get_queryset(self):
+        """Return only tours created by the current user."""
+        return Tour.objects.filter(artist__user=self.request.user)
+    
+    def perform_create(self, serializer):
+        """Set the current user as the tour creator."""
+        artist = get_object_or_404(Artist, user=self.request.user)
+        serializer.save(artist=artist)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete a tour instance.
+        Returns a success message upon successful deletion.
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {"detail": "Tour successfully deleted."},
+            status=status.HTTP_204_NO_CONTENT
         )
-    else:
-        gig.ticket_price = price
 
-    # Get the validation result
-    validation_result = gig.requires_price_confirmation(price=price)
 
-    return Response({
-        'is_valid': not validation_result['requires_confirmation'],
-        'message': validation_result['message'],
-        'suggested_range': validation_result['suggested_range'],
-        'tier': performance_tier.label if hasattr(performance_tier, 'label') else performance_tier
-    })
+class BookedVenuesAPI(APIView):
+    """
+    API for managing booked venues in a tour.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, tour_id):
+        """
+        Get all booked venues for a tour, ordered by event date.
+        """
+        try:
+            # Get the tour and verify ownership
+            tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
+            
+            # Get all booked venues for this tour
+            booked_venues = TourVenueSuggestion.get_booked_venues(tour_id)
+            
+            # Serialize the response
+            serializer = BookedVenueSerializer(booked_venues, many=True)
+            return Response({
+                "count": booked_venues.count(),
+                "results": serializer.data
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in get_booked_venues: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred while fetching booked venues"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def post(self, request, tour_id):
+        """
+        Book a venue for the tour.
+        
+        Expected POST data:
+        {
+            "venue_id": 123,
+            "event_date": "2023-12-25"
+        }
+        """
+        try:
+            # Get the tour and verify ownership
+            tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
+            
+            # Get venue and validate
+            venue_id = request.data.get('venue_id')
+            event_date = request.data.get('event_date')
+            
+            if not venue_id or not event_date:
+                return Response(
+                    {"error": "Both venue_id and event_date are required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            venue = get_object_or_404(Venue, id=venue_id, is_active=True)
+            
+            # Create or update the booking
+            suggestion, created = TourVenueSuggestion.objects.update_or_create(
+                tour=tour,
+                venue=venue,
+                defaults={
+                    'event_date': event_date,
+                    'is_booked': True
+                }
+            )
+            
+            # Serialize the response
+            serializer = BookedVenueSerializer(suggestion)
+            return Response(serializer.data, 
+                         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error in book_venue: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred while booking the venue"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 
 class GigByCityView(APIView):
@@ -1377,3 +1666,4 @@ def pending_venue_gigs(request):
         "count": pending_gigs.count(),
         "pending_gigs": serializer.data
     })
+

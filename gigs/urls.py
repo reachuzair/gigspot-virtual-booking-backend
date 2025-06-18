@@ -1,13 +1,21 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     GigByCityView, artist_event_history, get_contract_by_gig, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
-    create_venue_event, add_gig_venue_fee, validate_ticket_price
+    create_venue_event, add_gig_venue_fee, validate_ticket_price, TourViewSet
 )
+# Import tour views lazily to prevent circular imports
+from . import TourVenueSuggestionsAPI, BookedVenuesAPI
 
-urlpatterns = [
+# Create a router for ViewSets
+router = DefaultRouter()
+router.register(r'tours', TourViewSet, basename='tour')
+
+# Gig URL patterns
+gig_urls = [
     # Gig listing and details
     path('', list_gigs, name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
@@ -46,6 +54,26 @@ urlpatterns = [
 
     # Venue-specific endpoints
     path('venue/events/create/', create_venue_event, name='create_venue_event'),
+
+]
+
+# Tour URL patterns
+tour_urls = [
+    # Include ViewSet URLs
+    path('', include(router.urls)),
+    
+    # Custom tour endpoints
+    path('tours/<int:tour_id>/suggest-venues/', 
+         TourVenueSuggestionsAPI().as_view(), 
+         name='suggest-venues'),
+    path('tours/<int:tour_id>/booked-venues/', 
+         BookedVenuesAPI().as_view(), 
+         name='booked-venues'),
+]
+
+# Combine all URL patterns
+urlpatterns = gig_urls + tour_urls
+
     # Filter Gig by City
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
 
@@ -55,3 +83,4 @@ urlpatterns = [
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='signed-events'),
 ]
+
