@@ -54,7 +54,12 @@ gig_urls = [
 
     # Venue-specific endpoints
     path('venue/events/create/', create_venue_event, name='create_venue_event'),
-
+    
+    # Gig filtering and requests
+    path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
+    path('requests/submitted/', submitted_requests, name='submitted-requests'),
+    path('requests/received/', my_requests, name='my-requests'),
+    path('events/signed/', signed_events, name='signed-events'),
 ]
 
 # Tour URL patterns
@@ -73,14 +78,3 @@ tour_urls = [
 
 # Combine all URL patterns
 urlpatterns = gig_urls + tour_urls
-
-    # Filter Gig by City
-    path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
-
-     # Contract signing
-
-    path('requests/submitted/', submitted_requests, name='submitted-requests'),
-    path('requests/received/', my_requests, name='my-requests'),
-    path('events/signed/', signed_events, name='signed-events'),
-]
-
