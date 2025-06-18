@@ -46,3 +46,5 @@ typing_extensions==4.13.0
 urllib3==2.3.0
 zope.interface==7.2
 django-filter==25.1
+django-allauth==65.9.0
+dj-rest-auth==7.0.1

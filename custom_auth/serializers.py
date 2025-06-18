@@ -24,6 +24,10 @@ class ArtistSerializer(serializers.ModelSerializer):
 class VenueSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     profileImage = serializers.ImageField(source='logo', read_only=True)
+    proof_type = serializers.ChoiceField(
+        choices=['DOCUMENT', 'URL'], read_only=False)
+    proof_document = serializers.FileField(required=False, allow_null=True)
+    proof_url = serializers.URLField(required=False, allow_null=True)
 
     class Meta:
         model = Venue
@@ -34,9 +38,19 @@ class VenueSerializer(serializers.ModelSerializer):
             'city', 'state', 'address', 'capacity', 'amenities',
             'reservation_fee', 'artist_capacity', 'is_completed',
             'stripe_account_id', 'stripe_onboarding_completed',
-            'profileImage'
+            'profileImage', 'proof_type', 'proof_document', 'proof_url'
 
         )
+
+    def validate(self, data):
+        proof_type = data.get("proof_type")
+        if proof_type == "DOCUMENT" and not data.get("proof_document"):
+            raise serializers.ValidationError(
+                "Document is required when proof_type is DOCUMENT.")
+        if proof_type == "URL" and not data.get("proof_url"):
+            raise serializers.ValidationError(
+                "URL is required when proof_type is URL.")
+        return data
 
     def get_name(self, obj):
         return obj.user.name
@@ -61,8 +75,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     # Shared fields
     full_name = serializers.CharField(write_only=True, required=False)
-    name = serializers.CharField(
-        write_only=True, required=False)  # For Venue and Fan
+    name = serializers.CharField(write_only=True, required=False)
     phone_number = serializers.CharField(write_only=True, required=False)
     logo = serializers.ImageField(write_only=True, required=False)
     city = serializers.CharField(write_only=True, required=False)
@@ -72,12 +85,19 @@ class UserCreateSerializer(serializers.ModelSerializer):
     band_name = serializers.CharField(write_only=True, required=False)
     band_email = serializers.EmailField(write_only=True, required=False)
 
+    # Venue-only fields for proof
+    proof_type = serializers.ChoiceField(
+        choices=[("DOCUMENT", "Document"), ("URL", "URL")], write_only=True, required=False)
+    proof_document = serializers.FileField(write_only=True, required=False)
+    proof_url = serializers.URLField(write_only=True, required=False)
+
     class Meta:
         model = User
         fields = (
             'email', 'password', 'role',
             'full_name', 'phone_number', 'logo', 'city', 'state',
-            'band_name', 'band_email', 'name'
+            'band_name', 'band_email', 'name',
+            'proof_type', 'proof_document', 'proof_url'
         )
         extra_kwargs = {
             'role': {'required': True}
@@ -103,6 +123,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
         elif role == ROLE_CHOICES.VENUE:
             if not data.get('name'):
                 errors['name'] = 'This field is required for this role'
+            proof_type = data.get('proof_type')
+            if proof_type == "DOCUMENT" and not data.get('proof_document'):
+                errors['proof_document'] = 'This field is required when proof_type is DOCUMENT.'
+            if proof_type == "URL" and not data.get('proof_url'):
+                errors['proof_url'] = 'This field is required when proof_type is URL.'
 
         elif role == ROLE_CHOICES.FAN:
             if not data.get('name'):
@@ -123,6 +148,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
         state = validated_data.pop('state', None)
         band_name = validated_data.pop('band_name', None)
         band_email = validated_data.pop('band_email', None)
+        proof_type = validated_data.pop('proof_type', None)
+        proof_document = validated_data.pop('proof_document', None)
+        proof_url = validated_data.pop('proof_url', None)
 
         # Set User.name appropriately
         if role == ROLE_CHOICES.ARTIST and full_name:
@@ -131,11 +159,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
             validated_data['name'] = name
 
         user = User.objects.create_user(**validated_data)
+
+        # Build profile_data for downstream usage in view
         profile_data = {
             'phone_number': phone_number,
             'logo': logo,
             'city': city,
-            'state': state
+            'state': state,
         }
 
         if role == ROLE_CHOICES.ARTIST:
@@ -145,8 +175,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 'band_email': band_email
             })
 
+        elif role == ROLE_CHOICES.VENUE:
+            profile_data.update({
+                'proof_type': proof_type,
+                'proof_document': proof_document,
+                'proof_url': proof_url
+            })
+
+        # Save additional user settings
         UserSettings.objects.create(user=user)
 
+        # OTP flow
         otp = user.gen_otp()
         send_templated_email(
             'OTP Verification',
@@ -154,6 +193,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'otp_verification',
             {'otp': otp}
         )
+
+        # Attach to user instance for view usage
         user.profile_data = profile_data
         return user
 

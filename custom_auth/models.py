@@ -72,7 +72,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'  # Use email as the unique identifier for authentication
     # Fields required when creating a user via createsuperuser
-    REQUIRED_FIELDS = ['name']
+    REQUIRED_FIELDS = []
 
     def __str__(self):
         return self.email
@@ -824,21 +824,17 @@ class Venue(models.Model):
     verification_docs = models.FileField(
                 upload_to='venue_verification_docs', blank=True, null=True)
     location = models.JSONField(default=list)
-    capacity = models.IntegerField(
-        default=0,
-        help_text="Venue capacity used to determine the tier"
-    )
-    tier = models.ForeignKey(
-        'VenueTier',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Venue tier based on capacity"
-    )
-    amenities = models.JSONField(
-        default=list,
-        help_text="List of amenities available at the venue"
-    )
+    capacity = models.IntegerField(default=0)
+    amenities = models.JSONField(default=list)
+    PROOF_CHOICES = [
+        ('DOCUMENT', 'Document'),
+        ('URL', 'URL'),
+    ]
+
+    proof_type = models.CharField(max_length=10, choices=PROOF_CHOICES, null=True, blank=True)
+    proof_document = models.FileField(upload_to='venue_proofs/', null=True, blank=True)
+    proof_url = models.URLField(null=True, blank=True)
+
     seating_plan = models.ImageField(
         upload_to='venue_seating_plan', 
         blank=True, 

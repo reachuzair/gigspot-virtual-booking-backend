@@ -5,7 +5,11 @@
 {% block header %}{{ message }}{% endblock %}
 
 {% block content %}
-    <p>This Email contains your contract pin. If you did not request this, please ignore this email.</p>
-    <p>Contract Pin: {{ contract_pin }}</p>
-    <p>This pin will expire in 60 minutes.</p>
+<p>Hello {{ name }},</p>
+
+<p>This email contains your contract pin. If you did not request this, please ignore this message.</p>
+
+<p><strong>Contract Pin:</strong> <span style="font-size: 20px;">{{ pin }}</span></p>
+
+<p>This pin will expire in 60 minutes.</p>
 {% endblock %}

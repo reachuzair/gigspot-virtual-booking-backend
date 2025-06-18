@@ -21,3 +21,6 @@ class ArtistSerializer(serializers.ModelSerializer):
             'id', 'userId', 'artistName', 'artistGenre', 'createdAt', 'updatedAt', 'bannerImage'
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
+
+
+
