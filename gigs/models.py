@@ -222,7 +222,14 @@ class Gig(models.Model):
         null=True,
         blank=True
     )
-
+    genre = models.CharField(
+        max_length=20,
+        choices=GenreChoices.choices,
+        default=GenreChoices.RAP,
+        help_text='Genre of the gig',
+        null=True,
+        blank=True
+    )
     # Capacity
     max_artists = models.PositiveIntegerField(
         validators=[MinValueValidator(1)],

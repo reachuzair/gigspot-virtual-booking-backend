@@ -1,7 +1,6 @@
 from django.db import models
 import stripe
 from django.conf import settings
-from custom_auth.models import SubscriptionTier
 from datetime import datetime
 from django.utils.translation import gettext_lazy as _
 

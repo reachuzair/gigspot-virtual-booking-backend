@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from custom_auth.models import Artist
 from gigs.models import Gig
-from payments.models import Ticket
+from payments.models import Payment, PaymentStatus, Ticket
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser
 # Configure Stripe
@@ -215,7 +215,7 @@ class PaymentService:
                         currency='usd',
                         status=PaymentStatus.PENDING,
                         payment_type=PaymentType.TICKET_PURCHASE,
-                        payment_method=PaymentMethod.CARD,
+                        payment_method=stripe.PaymentMethod.CARD,
                         reference_id=intent.id,
                         metadata={
                             'gig_id': str(gig.id),
