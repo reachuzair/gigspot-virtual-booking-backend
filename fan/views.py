@@ -15,7 +15,6 @@ from .serializers import FanTicketSerializer
 from gigs.models import Gig
 from gigs.serializers import GigDetailSerializer
 from payments.models import Ticket
-from subscriptions.models import SubscriptionPlan
 
 
 
