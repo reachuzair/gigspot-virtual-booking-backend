@@ -78,29 +78,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error("Error processing message")
 
     async def handle_chat_message(self, data):
-        """Process and broadcast chat messages."""
         content = data.get('message')
-        if not content:
-            await self.send_error("Message content is required")
+        base64_file = data.get('attachment')
+
+        if not content and not base64_file:
+            await self.send_error("Message content or attachment is required")
             return
 
         try:
-            # Get room type and participants
             room_type = await self.get_room_type()
             participants = await self.get_room_participants()
-            
-            # For private chat, find the other participant
-            receiver = None
-            if room_type == 'private':
-                receiver = next((p for p in participants if p != self.user), None)
-                if not receiver:
-                    await self.send_error("No receiver found in private chat")
-                    return
-            
-            # Save the message
-            message = await self.save_message(content, receiver.id if receiver else None)
-            
-            # Prepare message data
+            receiver = next((p for p in participants if p != self.user), None) if room_type == 'private' else None
+
+            if room_type == 'private' and not receiver:
+                await self.send_error("No receiver found in private chat")
+                return
+
+            message = await self.save_message_with_file(content, receiver.id if receiver else None, base64_file)
+
             message_data = {
                 'type': 'chat_message',
                 'message_id': str(message.id),
@@ -110,20 +105,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'room_id': str(self.room_id),
                 'room_type': room_type,
                 'timestamp': message.timestamp.isoformat(),
-                'status': 'sent'
+                'status': 'sent',
+                'attachment_url': message.attachment.url if message.attachment else None,
+                
             }
-            
-            # For private chat, add receiver info
+
             if receiver:
                 message_data['receiver_id'] = str(receiver.id)
                 message_data['receiver_name'] = await self.get_user_name(receiver.id)
-            
-            # Send to sender
+
             await self.send(text_data=json.dumps(message_data))
-            
-            # Send to other participants
+
             for participant in participants:
-                if participant != self.user:  # Don't send to self again
+                if participant != self.user:
                     await self.channel_layer.group_send(
                         f'user_{participant.id}',
                         {
@@ -132,14 +126,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                             'status': 'delivered' if participant == receiver else 'sent'
                         }
                     )
-            
-            # Update status to delivered for direct messages
+
             if receiver:
                 await self.update_message_status(message.id, 'delivered')
 
         except Exception as e:
             logger.error(f"Message save error: {str(e)}")
             await self.send_error("Failed to send message")
+
 
     async def handle_typing(self, data):
         """Handle typing indicators."""
@@ -319,4 +313,56 @@ class ChatConsumer(AsyncWebsocketConsumer):
             message.save(update_fields=['is_read', 'read_at'])
         except Message.DoesNotExist:
             logger.warning(f"Message {message_id} not found for read receipt or already read")
+    @database_sync_to_async
+    def save_message_with_file(self, content, receiver_id=None, base64_file=None):
+        from django.contrib.auth import get_user_model
+        from django.core.files.base import ContentFile
+        from django.db import transaction
+        import base64
+        import uuid
+        import time
+
+        User = get_user_model()
+
+        def decode_base64_file(data, name_hint):
+            try:
+                if ';base64,' in data:
+                    header, b64data = data.split(';base64,')
+                    ext = header.split('/')[-1]
+                    filename = f"{uuid.uuid4().hex}_{name_hint or 'upload'}.{ext}"
+                else:
+                    b64data = data
+                    filename = f"{uuid.uuid4().hex}_{name_hint or 'upload'}"
+                return ContentFile(base64.b64decode(b64data), name=filename)
+            except Exception as e:
+                raise ValueError("Invalid base64 file")
+
+        with transaction.atomic():
+            if receiver_id:
+                receiver = User.objects.get(id=receiver_id)
+                room, created = ChatRoom.objects.get_or_create(
+                    room_type='private',
+                    defaults={'name': f'Chat {self.user.id}-{receiver_id}'}
+                )
+                if created:
+                    room.participants.add(self.user, receiver)
+                    room.save()
+            else:
+                room = self.room
+
+            attachment = decode_base64_file(base64_file,name_hint=None) if base64_file else None
+
+            message = Message.objects.create(
+                chat_room=room,
+                sender=self.user,
+                content={"text": content},
+                receiver_id=receiver_id,
+                attachment=attachment
+            )
+
+            ChatRoom.objects.filter(id=room.id).update(updated_at=message.timestamp)
+            time.sleep(0.1)
+            message.refresh_from_db()
+            return message
+
 
