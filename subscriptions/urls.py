@@ -1,7 +1,7 @@
 """URL configuration for subscription endpoints."""
 from django.urls import path
 from .views import (
-    UnifiedSubscriptionPlansView,
+    SubscriptionPlansView,
     ArtistSubscriptionView,
     VenueSubscriptionView,
     manage_artist_subscription
@@ -11,7 +11,7 @@ app_name = 'subscriptions'
 
 urlpatterns = [
     # Unified subscription plans (includes both artist and venue plans)
-    path('plans/', UnifiedSubscriptionPlansView.as_view(), name='subscription-plans'),
+    path('plans/', SubscriptionPlansView.as_view(), name='subscription-plans'),
     
     # Artist subscription management
     path('artists/', ArtistSubscriptionView.as_view(), name='artist-subscription'),
