@@ -30,7 +30,7 @@ from .base_views import BaseSubscriptionView
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-class UnifiedSubscriptionPlansView(APIView):
+class SubscriptionPlansView(APIView):
     """
     API endpoint that returns subscription plans for both artists and venues.
     
@@ -339,13 +339,27 @@ class ArtistSubscriptionView(BaseSubscriptionView):
         )
     
     def create_subscription(self, user, plan, payment_method_id, coupon_code=None):
-        """Create a new subscription for an artist."""
-        return SubscriptionService.create_artist_subscription(
-            user.artist_profile,
-            plan,
-            payment_method_id,
-            coupon_code
+        """
+        Create a new subscription for an artist.
+        
+        Args:
+            user: The user subscribing
+            plan: The subscription plan
+            payment_method_id: Stripe payment method ID
+            coupon_code: Optional coupon code
+            
+        Returns:
+            tuple: (subscription_object, client_secret)
+        """
+        # The actual subscription creation is now handled in the service
+        # This method is kept for backward compatibility
+        subscription, client_secret = SubscriptionService.create_subscription(
+            user=user,
+            plan=plan,
+            subscription_type=self.subscription_type,
+            payment_method_id=payment_method_id
         )
+        return subscription, client_secret
     
     def get_active_subscription(self, user):
         """Get the active subscription for an artist."""
@@ -376,13 +390,25 @@ class VenueSubscriptionView(BaseSubscriptionView):
         )
     
     def create_subscription(self, user, plan, payment_method_id, coupon_code=None):
-        """Create a new subscription for a venue."""
-        return SubscriptionService.create_venue_subscription(
-            user.venue_profile,
-            plan,
-            payment_method_id,
-            coupon_code
+        """
+        Create a new subscription for a venue.
+        
+        Args:
+            user: The user subscribing
+            plan: The subscription plan
+            payment_method_id: Stripe payment method ID
+            coupon_code: Optional coupon code
+            
+        Returns:
+            tuple: (subscription_object, client_secret)
+        """
+        subscription, client_secret = SubscriptionService.create_subscription(
+            user=user,
+            plan=plan,
+            subscription_type=self.subscription_type,
+            payment_method_id=payment_method_id
         )
+        return subscription, client_secret
     
     def get_active_subscription(self, user):
         """Get the active subscription for a venue."""
