@@ -39,7 +39,7 @@ class UnifiedSubscriptionPlansView(APIView):
     
     Authentication is required to access this endpoint.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
     
     def _get_stripe_plans(self):
         """Fetch all active subscription plans from Stripe"""
