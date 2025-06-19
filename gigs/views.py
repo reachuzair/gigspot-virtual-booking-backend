@@ -1,7 +1,7 @@
 from asyncio.log import logger
 from datetime import timedelta
 import stripe
-
+from rest_framework import serializers
 from gigspot_backend import settings
 from .models import Gig, Status, GigType
 import io
