@@ -459,7 +459,7 @@ def send_invite_request(request, id):
 
     try:
         gig = Gig.objects.get(id=id)
-        if gig.user != user:
+        if gig.created_by != user:
             return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1579,11 +1579,11 @@ def submitted_requests(request):
 @permission_classes([IsAuthenticated])
 def my_requests(request):
     user = request.user
-    if not hasattr(user, 'artist'):
+    if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can view received requests.'}, status=403)
 
     invites = GigInvite.objects.filter(
-        artist_received=user.artist).select_related('gig', 'user')
+        artist_received=user.artist_profile).select_related('gig', 'user')
     data = [
         {
             'gig_id': invite.gig.id,
@@ -1600,15 +1600,21 @@ def my_requests(request):
 @permission_classes([IsAuthenticated])
 def signed_events(request):
     user = request.user
-    role_field = 'venue' if hasattr(
-        user, 'venue') else 'artist' if hasattr(user, 'artist') else None
 
-    if not role_field:
+    if hasattr(user, 'venue'):
+        role_field = 'venue'
+        role_obj = user.venue
+    elif hasattr(user, 'artist_profile'):
+        role_field = 'artist_profile'
+        role_obj = user.artist_profile
+    else:
         return Response({'detail': 'Only artists or venues can view signed events.'}, status=403)
 
-    role_obj = getattr(user, role_field)
+    role_filter = {'venue' if role_field == 'venue' else 'artist': role_obj}
+
     contracts = Contract.objects.filter(
-        artist_signed=True, **{role_field: role_obj}).select_related('gig')
+        artist_signed=True, **role_filter).select_related('gig')
+
     data = [
         {
             'contract_id': contract.id,
@@ -1620,6 +1626,7 @@ def signed_events(request):
         } for contract in contracts
     ]
     return Response({'signed_events': data})
+
 
 
 @api_view(['GET'])
