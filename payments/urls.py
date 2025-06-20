@@ -26,6 +26,7 @@ urlpatterns = [
 
     # Tickets
     path('list-tickets/<int:gig_id>/', list_tickets, name='list_tickets'),
+    path('list-tickets/', list_tickets, name='list_tickets'),
     path('capturePaymentIntent/',
          capture_payment_intent, name='create-payment-intent'),
 ]
