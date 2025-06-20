@@ -1563,13 +1563,16 @@ def submitted_requests(request):
     user = request.user
     invites = GigInvite.objects.filter(
         user=user).select_related('gig', 'artist_received')
+    venue =Venue.objects.filter(user=user).first()
     data = [
         {
             'gig_id': invite.gig.id,
             'gig_title': invite.gig.title,
+            'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
             'artist': invite.artist_received.user.name,
             'status': invite.status,
-            'sent_at': invite.created_at
+            'sent_at': invite.created_at,
+            'address': invite.gig.venue.address if invite.gig.venue else None,
         } for invite in invites
     ]
     return Response({'submitted_requests': data})

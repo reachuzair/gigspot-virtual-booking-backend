@@ -6,7 +6,8 @@ from rest_framework import serializers
 
 class FanTicketSerializer(serializers.ModelSerializer):
     gig = GigSerializer()
+    quantity=serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Ticket
-        fields = ['id', 'gig', 'quantity', 'purchase_date']
+        fields = ['id', 'gig', 'quantity']

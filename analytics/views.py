@@ -13,7 +13,7 @@ from django.db.models import F
 @permission_classes([IsAuthenticated])
 def fan_engagement_stats(request):
     user = request.user
-    if not hasattr(user, 'artist'):
+    if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can access fan engagement.'}, status=403)
 
     today = timezone.now().date()
