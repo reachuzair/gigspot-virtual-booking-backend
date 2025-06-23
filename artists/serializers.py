@@ -18,7 +18,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artist
         fields = [
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre'
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre',
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
 

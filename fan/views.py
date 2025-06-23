@@ -64,10 +64,10 @@ def featured_artist_with_events_view(request, id):
         
         artist_data = ArtistSerializer(artist, context={'request': request}).data
         gigs_data = GigDetailSerializer(gigs, many=True, context={'request': request}).data
+        artist_data['events'] = gigs_data if gigs.exists() else []
 
         return Response({
             'artist': artist_data,
-            'events': gigs_data if gigs.exists() else ['No events found for this artist.'],
         }, status=200)
 
     except Exception as e:
