@@ -10,6 +10,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
     bannerImage = serializers.ImageField(source='logo', read_only=True)
+    likes = serializers.IntegerField(source='likes.count', read_only=True)
 
     def get_artistGenre(self, obj):
         gig = Gig.objects.filter().first()
@@ -18,7 +19,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artist
         fields = [
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre',
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes'
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
 

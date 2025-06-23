@@ -539,6 +539,7 @@ class Artist(models.Model):
         null=True,
         help_text="Upload any verification documents required"
     )
+    likes = models.ManyToManyField(User, related_name='liked_artists', blank=True)
     logo = models.ImageField(
         upload_to='artist_logo', 
         blank=True, 

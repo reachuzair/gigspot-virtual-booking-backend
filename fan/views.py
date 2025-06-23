@@ -72,3 +72,48 @@ def featured_artist_with_events_view(request, id):
 
     except Exception as e:
         return Response({'detail': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_artist_like(request, id):
+    try:
+        user = request.user
+        artist = get_object_or_404(Artist, id=id, subscription_tier='PREMIUM')
+
+        if artist.likes.filter(id=user.id).exists():
+            artist.likes.remove(user)
+            liked = False
+        else:
+            artist.likes.add(user)
+            liked = True
+
+        artist.save()
+
+        return Response({
+            'status': 'success',
+            'liked': liked,
+            'likes_count': artist.likes.count()
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def liked_artists_view(request):
+    user = request.user
+
+    if user.role != ROLE_CHOICES.FAN:
+        return Response(
+            {"detail": "Only fans can access their liked artists."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    liked_artists = Artist.objects.filter(likes=user).select_related('user')
+    serializer = ArtistSerializer(liked_artists, many=True, context={'request': request})
+
+    return Response({
+        "liked_artists": serializer.data,
+        "count": len(serializer.data)
+    }, status=status.HTTP_200_OK)
