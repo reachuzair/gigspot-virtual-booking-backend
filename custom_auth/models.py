@@ -11,6 +11,8 @@ import random
 import logging
 from django.core.cache import cache
 
+from subscriptions.models import SubscriptionPlan
+
 logger = logging.getLogger(__name__)
 
 
@@ -600,11 +602,7 @@ class VenueTier(models.Model):
             return None
 
 
-class SubscriptionTier(models.TextChoices):
-    STARTER = 'starter', 'Starter'
-    ESSENTIAL = 'essential', 'Essential'
-    PRO = 'pro', 'Pro'
-    ELITE = 'elite', 'Elite'
+
 
 
 class ArtistManager(models.Manager):
@@ -649,6 +647,7 @@ class Artist(models.Model):
         null=True,
         help_text="Upload any verification documents required"
     )
+    likes = models.ManyToManyField(User, related_name='liked_artists', blank=True)
     logo = models.ImageField(
         upload_to='artist_logo', 
         blank=True, 
@@ -686,8 +685,8 @@ class Artist(models.Model):
     )
     subscription_tier = models.CharField(
         max_length=50,
-        choices=SubscriptionTier.choices, 
-        default=SubscriptionTier.STARTER,
+        choices=SubscriptionPlan.TIER_CHOICES,
+        default='FREE',
         help_text="Subscription level for premium features"
     )
     shows_created = models.PositiveIntegerField(

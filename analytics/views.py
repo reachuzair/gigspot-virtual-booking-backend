@@ -54,10 +54,10 @@ def fan_engagement_stats(request):
 @permission_classes([IsAuthenticated])
 def analytics_overview(request):
     user = request.user
-    if not hasattr(user, 'artist'):
+    if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can view analytics.'}, status=403)
 
-    artist = user.artist
+    artist = user.artist_profile
 
     contracts = Contract.objects.filter(artist_signed=True, artist=artist)
     monthly = contracts.annotate(month=TruncMonth('created_at')) \

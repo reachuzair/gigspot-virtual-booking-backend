@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from custom_auth.models import Artist
 from gigs.models import Gig
-from payments.models import Ticket
+from payments.models import Payment, PaymentStatus
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser
 # Configure Stripe
@@ -215,7 +215,7 @@ class PaymentService:
                         currency='usd',
                         status=PaymentStatus.PENDING,
                         payment_type=PaymentType.TICKET_PURCHASE,
-                        payment_method=PaymentMethod.CARD,
+                        payment_method=stripe.PaymentMethod.CARD,
                         reference_id=intent.id,
                         metadata={
                             'gig_id': str(gig.id),
@@ -529,61 +529,74 @@ def _get_or_create_customer(user, payment_method_id=None):
         logger.error(f'Error in _get_or_create_customer: {str(e)}')
         raise
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_tickets(request, gig_id=None):
+    from gigs.models import Gig
+    from payments.models import Ticket
+    from django.utils import timezone
 
-def list_tickets(request, gig_id):
-    # Import models locally to prevent AppRegistryNotReady error
-    from gigs.models import Ticket, Gig
-    from .models import Payment
-    """
-    List all tickets for a specific gig for the authenticated user.
-    """
+    user = request.user
+    now = timezone.now()
+
     try:
+        if gig_id:
+            # Specific gig ticket summary
+            try:
+                gig = Gig.objects.get(id=gig_id, status='approved')
+            except Gig.DoesNotExist:
+                return Response(
+                    {'detail': 'Gig not found or not approved'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-        # Verify the gig exists and is active
-        try:
-            gig = Gig.objects.get(id=gig_id, is_active=True)
-        except Gig.DoesNotExist:
-            return Response(
-                {'detail': 'Gig not found or inactive'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-            
-        # Only allow the gig owner to view tickets
-        if gig.user != request.user and request.user.role != 'ADMIN':
-            return Response(
-                {'detail': 'Not authorized to view these tickets'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-            
-        # Get all tickets for this gig
-        tickets = Ticket.objects.filter(gig=gig).select_related('user')
-        
-        # Serialize the tickets
-        ticket_data = [{
-            'id': ticket.id,
-            'user': {
-                'id': ticket.user.id,
-                'name': ticket.user.get_full_name() or ticket.user.email,
-                'email': ticket.user.email
-            },
-            'status': ticket.status,
-            'purchase_date': ticket.created_at,
-            'ticket_type': ticket.ticket_type,
-            'quantity': ticket.quantity,
-            'total_paid': str(ticket.total_paid)
-        } for ticket in tickets]
-        
+            user_tickets = Ticket.objects.filter(gig=gig, user=user).order_by('-created_at')
+            current_ticket = None
+            past_tickets = []
 
-        return Response({
-            'gig': {
-                'id': gig.id,
-                'title': gig.title,
-                'date': gig.date_time,
-                'total_tickets_sold': len(ticket_data),
-                'total_revenue': str(sum(float(t['total_paid']) for t in ticket_data))
-            },
-            'tickets': ticket_data
-        })
+            for ticket in user_tickets:
+                ticket_info = {
+                    'id': ticket.id,
+                    'gig_id': gig.id,
+                    'gig_title': gig.title,
+                    'purchase_date': ticket.created_at,
+                }
+                if gig.event_date >= now and current_ticket is None:
+                    current_ticket = ticket_info
+                elif gig.event_date < now:
+                    past_tickets.append(ticket_info)
+
+            return Response({
+                "gig": {
+                    "id": gig.id,
+                    "title": gig.title,
+                    "date": gig.event_date,
+                    "ticket_price": str(gig.ticket_price)
+                },
+                "current_ticket": current_ticket,
+                "past_tickets": past_tickets
+            })
+        
+        else:
+            # All tickets across all gigs for the user
+            tickets = Ticket.objects.filter(user=user).select_related('gig').order_by('-created_at')
+
+            all_tickets = []
+            for ticket in tickets:
+                all_tickets.append({
+                    'gig_id': ticket.gig.id,
+                    'gig_title': ticket.gig.title,
+                    'gig_date': ticket.gig.event_date,
+                    'ticket_price': str(ticket.gig.ticket_price),
+                    'purchase_date': ticket.created_at,
+                })
+
+            return Response({
+                "count": len(all_tickets),
+                "tickets": all_tickets,
+                "past_tickets": [t for t in all_tickets if t['gig_date'] < now],
+                "ticket_price": str(tickets[0].gig.ticket_price) if tickets else '0.00'
+            })
 
     except Exception as e:
         logger.error(f'Error in list_tickets: {str(e)}')
@@ -591,8 +604,41 @@ def list_tickets(request, gig_id):
             {'detail': 'An error occurred while retrieving tickets'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+@api_view(['GET'])
+def get_purchased_tickets_detail(request, ticket_id):
+    from gigs.models import Gig
+    from payments.models import Ticket
 
+    try:
+        ticket = Ticket.objects.get(id=ticket_id, user=request.user)
+        gig = ticket.gig
 
+        if not Gig.objects.get(status='approved', id=gig.id):
+                return Response(
+                    {'detail': 'Gig not found or not approved'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        return Response({
+            'ticket_id': ticket.id,
+            'gig_id': gig.id,
+            'gig_title': gig.title,
+            'gig_date': gig.event_date,
+            'location': gig.venue.address if gig.venue else 'N/A',
+            'address': gig.venue.address if gig.venue else 'N/A',
+            'booking_code': ticket.booking_code,
+            'ticket_price': str(gig.ticket_price),
+            'purchase_date': ticket.created_at,
+            'qr_code_url': ticket.qr_code.url if ticket.qr_code else None,
+            'artist':gig.created_by.id and gig.created_by.name or 'Unknown Artist' and gig.collaborators.all().values_list('name', flat=True) or 'No Collaborators',
+            'quantity': len(ticket.gig.tickets.filter(user=request.user, gig=gig)),
+        })
+
+    except Ticket.DoesNotExist:
+        return Response(
+            {'detail': 'Ticket not found or does not belong to this user.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 
 @api_view(['POST'])

@@ -17,12 +17,30 @@ class VenueProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = [
-            'id', 'verification_docs', 'location', 'capacity', 'amenities',
-            'seating_plan', 'reservation_fee', 'artist_capacity', 'is_completed',
-            'stripe_account_id', 'stripe_onboarding_completed', 'created_at',
-            'updated_at', 'user', 'address', 'name', 'city'
+            'id',
+            'user',
+            'name',
+            'verification_docs',
+            'location',
+            'capacity',
+            'amenities',
+            'proof_type',
+            'proof_document',
+            'proof_url',
+            'seating_plan',
+            'reservation_fee',
+            'address',
+            'artist_capacity',
+            'is_completed',
+            'stripe_account_id',
+            'stripe_onboarding_completed',
+            'created_at',
+            'updated_at',
+            'phone_number',
+            'logo',
+            'city',
+            'state'
         ]
-
     def update(self, instance, validated_data):
         # Extract and update user-related field
         name = validated_data.pop('name', None)

@@ -1,3 +1,5 @@
+from datetime import timezone
+from venv import logger
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -29,30 +31,34 @@ def user_profile(request):
 
         def get_artist_data(artist):
             artist_data = model_to_dict(
-                artist, exclude=['verification_docs', 'logo'])
-            artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs else None
-            artist_data['logo'] = artist.logo.url if artist.logo else None
+                artist, exclude=['verification_docs', 'logo']
+            )
             
+            artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs and artist.verification_docs.name else None
+            artist_data['logo'] = artist.logo.url if artist.logo and artist.logo.name else None
+
             # Default to 'free' tier
             artist_data['subscription_tier'] = 'free'
-            
+
             # Update to 'premium' if they have an active premium subscription
             if hasattr(artist, 'subscription') and artist.subscription:
                 if artist.subscription.status == 'active' and hasattr(artist.subscription, 'plan'):
-                    # Ensure we only set 'premium' for actual premium subscriptions
                     if artist.subscription.plan.subscription_tier.upper() == 'PREMIUM':
                         artist_data['subscription_tier'] = 'premium'
-                
+
             return artist_data
 
+
         def get_venue_data(venue):
-
-
-            venue_data = model_to_dict(venue, exclude=['verification_docs', 'seating_plan'])
-            venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs else None
-            venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan else None
-
-
+            venue_data = model_to_dict(
+                venue,
+                exclude=['verification_docs', 'seating_plan', 'proof_document', 'proof_url', 'logo']
+            )
+            venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs and venue.verification_docs.name else None
+            venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan and venue.seating_plan.name else None
+            venue_data['proof_document'] = venue.proof_document.url if venue.proof_document and venue.proof_document.name else None
+            venue_data['proof_url'] = venue.proof_url if venue.proof_url else None
+            venue_data['logo'] = venue.logo.url if venue.logo and venue.logo.name else None  
 
             return venue_data
 
@@ -118,26 +124,29 @@ def update_notification_settings(request):
         key = request.data.get('key')
         value = request.data.get('value')
 
-        if not key or not value:
+        if key is None or value is None:
             return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        user_settings = UserSettings.objects.filter(user=user).first()
-        if not user_settings:
-            user_settings = UserSettings.objects.create(user=user)
 
         allowed_keys = ['notify_by_email', 'notify_by_app']
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if value not in [True, False]:
-            return Response({"detail": "Value must be a boolean"}, status=status.HTTP_400_BAD_REQUEST)
+        if value == 'true':
+            bool_value = True
+        elif value == 'false':
+            bool_value = False
+        else:
+            return Response({"detail": "Value must be 'true' or 'false'"}, status=status.HTTP_400_BAD_REQUEST)
 
-        setattr(user_settings, key, value)
+        user_settings, created = UserSettings.objects.get_or_create(user=user)
+        setattr(user_settings, key, bool_value)
         user_settings.save()
 
         return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 @api_view(['PUT'])
@@ -165,6 +174,7 @@ def update_user_profile(request):
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
         user.save()
+        
 
         return Response({"detail": "Profile updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:

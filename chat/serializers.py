@@ -28,10 +28,19 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 class MessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.CharField(source='sender.name', read_only=True)
     receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+    attachment_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'sender_id', 'sender_username', 'receiver_id', 'content', 'timestamp', 'is_read']
+        fields = [
+            'id', 'sender_id', 'sender_username', 'receiver_id',
+            'content', 'timestamp', 'is_read',
+            'attachment_url'
+        ]
+
+    def get_attachment_url(self, obj):
+        return obj.attachment.url if obj.attachment else None
+
 
 
 class EmailAttachmentSerializer(serializers.ModelSerializer):
