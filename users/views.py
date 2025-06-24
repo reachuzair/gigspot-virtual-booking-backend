@@ -213,59 +213,45 @@ def update_artist_soundcharts_uuid(request):
         # Check if user has an artist role
         if user.role != 'artist':
             return Response(
-                {"detail": "User is not an artist"}, 
+                {"detail": "Only artists can update SoundCharts UUID"}, 
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Get or create artist record
-        artist, created = Artist.objects.get_or_create(user=user)
-        
-        # Only update if UUID has changed
-        if artist.soundcharts_uuid == soundcharts_uuid:
+        # Get or create artist profile
+        try:
+            artist = Artist.objects.get(user=user)
+        except Artist.DoesNotExist:
             return Response(
-                {
-                    "detail": "Soundcharts UUID is already set to this value",
-                    "tier": artist.get_performance_tier_display(),
-                    "last_updated": artist.last_tier_update
-                }, 
-                status=status.HTTP_200_OK
-            )
-            
-        # Update UUID
-        artist.soundcharts_uuid = soundcharts_uuid
-        
-        # Get tier from SoundCharts
-        from services.soundcharts import SoundChartsAPI
-        soundcharts = SoundChartsAPI()
-        result = soundcharts.get_artist_tier(soundcharts_uuid)
-        
-        if 'error' in result:
-            # Save the UUID even if tier update fails, but include a warning
-            artist.save()
-            return Response(
-                {
-                    "detail": "Soundcharts UUID saved, but failed to update tier",
-                    "error": result.get('error', 'Unknown error')
-                }, 
-                status=status.HTTP_200_OK
+                {"detail": "Artist profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
             )
         
-        # Update artist tier and save
-        artist.performance_tier = result['tier']
-        artist.last_tier_update = timezone.now()
-        artist.save()
+        # Update the SoundCharts UUID and metrics using our utility function
+        from custom_auth.soundcharts_utils import update_artist_soundcharts_uuid as update_uuid
+        
+        result = update_uuid(artist, soundcharts_uuid, force_update=True)
+        
+        if not result.get('success'):
+            return Response(
+                {"detail": result.get('error', 'Failed to update artist metrics')}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         return Response(
             {
                 "detail": "Soundcharts UUID and artist tier updated successfully",
                 "tier": artist.get_performance_tier_display(),
-                "last_updated": artist.last_tier_update
+                "tier_value": artist.performance_tier,
+                "last_updated": artist.last_tier_update,
+                "follower_count": artist.follower_count,
+                "monthly_listeners": getattr(artist, 'monthly_listeners', None),
+                "total_streams": getattr(artist, 'total_streams', None)
             }, 
             status=status.HTTP_200_OK
         )
         
     except Exception as e:
-        logger.error(f"Error updating SoundCharts UUID: {str(e)}")
+        logger.error(f"Error updating SoundCharts UUID: {str(e)}", exc_info=True)
         return Response(
             {"detail": "An error occurred while updating SoundCharts UUID"}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -276,7 +262,8 @@ def update_artist_soundcharts_uuid(request):
 @permission_classes([IsAuthenticated])
 def get_artist_metrics(request):
     """
-    Get the current artist's metrics, updating them if they're stale
+    Get the current artist's metrics, updating them if they're stale.
+    This endpoint will update the metrics if they haven't been updated in the last 24 hours.
     """
     try:
         user = request.user
@@ -285,26 +272,45 @@ def get_artist_metrics(request):
             
         artist = Artist.objects.get(user=user)
         
-        # Update metrics if needed
-        from custom_auth.utils import update_artist_metrics_if_needed
-        was_updated = update_artist_metrics_if_needed(artist)
+        # Check if we need to update metrics (if they're stale or forced)
+        from custom_auth.soundcharts_utils import update_artist_metrics_from_soundcharts
         
+        # Only update if data is stale (older than 24 hours)
+        force_update = request.query_params.get('force_update', '').lower() == 'true'
+        result = update_artist_metrics_from_soundcharts(artist, force_update=force_update)
+        
+        if not result.get('success') and result.get('code') != 'missing_uuid':
+            # If there was an error and it's not just a missing UUID, return the error
+            return Response(
+                {"detail": result.get('error', 'Failed to update artist metrics')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prepare response data
         response_data = {
             "tier": artist.get_performance_tier_display(),
-            "tier_key": artist.performance_tier,
-            "followers": artist.followers,
-            "monthly_listeners": artist.monthly_listeners,
-            "total_streams": artist.total_streams,
-            "last_updated": artist.last_metrics_update,
-            "metrics_just_updated": was_updated
+            "tier_value": artist.performance_tier,
+            "follower_count": artist.follower_count,
+            "monthly_listeners": getattr(artist, 'monthly_listeners', None),
+            "total_streams": getattr(artist, 'total_streams', None),
+            "last_updated": artist.last_tier_update,
+            "metrics_just_updated": result.get('success', False) and not result.get('cached', False)
         }
+        
+        # If there was a missing UUID, include a warning in the response
+        if result.get('code') == 'missing_uuid':
+            response_data['warning'] = 'SoundCharts UUID not set. Please update your profile with a valid SoundCharts UUID.'
         
         return Response(response_data, status=status.HTTP_200_OK)
         
     except Artist.DoesNotExist:
         return Response({"detail": "Artist profile not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        logger.error(f"Error getting artist metrics: {str(e)}", exc_info=True)
+        return Response(
+            {"detail": "An error occurred while fetching artist metrics"}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['GET', 'PUT', 'PATCH'])

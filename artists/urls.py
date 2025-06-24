@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import  list_artists, get_artist
+from . import views
 
 urlpatterns = [
-    path('', list_artists, name='list_artists'),
-    path('<int:artist_id>/', get_artist, name='get_artist'),
-    
+    path('', views.list_artists, name='list_artists'),
+    path('<int:artist_id>/', views.get_artist, name='get_artist'),
+    path('analytics/', views.ArtistAnalyticsView.as_view(), name='artist-analytics'),
+    path('analytics/<int:artist_id>/', views.ArtistAnalyticsView.as_view(), name='artist-analytics-detail'),
 ]

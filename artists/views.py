@@ -1,13 +1,13 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from custom_auth.models import ROLE_CHOICES, Artist
-from .serializers import ArtistSerializer
-
+from django.shortcuts import get_object_or_404
+from custom_auth.models import Artist, PerformanceTier
+from .serializers import ArtistSerializer, ArtistAnalyticsSerializer
 from rest_framework.pagination import PageNumberPagination
-from custom_auth.models import PerformanceTier
 from django.db.models import Q
 
 @api_view(['GET'])
@@ -60,3 +60,47 @@ def get_artist(request, artist_id):
     response_data = artist_serializer.data
     return Response(response_data)
 
+class ArtistAnalyticsView(APIView):
+    """
+    API endpoint to get artist analytics including fan engagement,
+    social media following, playlist views, and buzz score percentage.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, artist_id=None):
+        # If no artist_id is provided, use the current user's artist profile
+        if artist_id is None:
+            if not hasattr(request.user, 'artist_profile'):
+                return Response(
+                    {'error': 'No artist profile found for this user'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            artist = request.user.artist_profile
+        else:
+            # Only allow artists to view their own analytics or admins to view any
+            if not request.user.is_staff and (
+                not hasattr(request.user, 'artist_profile') or 
+                request.user.artist_profile.id != artist_id
+            ):
+                return Response(
+                    {'error': 'You do not have permission to view this artist\'s analytics'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            artist = get_object_or_404(Artist, id=artist_id)
+        
+        # Update the artist's metrics from SoundCharts if needed
+        # This is optional - you can remove this block if you want to use cached values only
+        try:
+            from services.soundcharts import SoundChartsAPI
+            soundcharts = SoundChartsAPI()
+            if hasattr(soundcharts, 'update_artist_metrics'):
+                soundcharts.update_artist_metrics(artist)
+        except Exception as e:
+            # Log the error but continue with the request
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to update artist metrics: {str(e)}")
+        
+        # Serialize and return the data
+        serializer = ArtistAnalyticsSerializer(artist)
+        return Response(serializer.data)
