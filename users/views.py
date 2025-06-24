@@ -124,26 +124,29 @@ def update_notification_settings(request):
         key = request.data.get('key')
         value = request.data.get('value')
 
-        if not key or not value:
+        if key is None or value is None:
             return Response({"detail": "Key and value are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        user_settings = UserSettings.objects.filter(user=user).first()
-        if not user_settings:
-            user_settings = UserSettings.objects.create(user=user)
 
         allowed_keys = ['notify_by_email', 'notify_by_app']
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if value not in [True, False]:
-            return Response({"detail": "Value must be a boolean"}, status=status.HTTP_400_BAD_REQUEST)
+        if value == 'true':
+            bool_value = True
+        elif value == 'false':
+            bool_value = False
+        else:
+            return Response({"detail": "Value must be 'true' or 'false'"}, status=status.HTTP_400_BAD_REQUEST)
 
-        setattr(user_settings, key, value)
+        user_settings, created = UserSettings.objects.get_or_create(user=user)
+        setattr(user_settings, key, bool_value)
         user_settings.save()
 
         return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 @api_view(['PUT'])
@@ -171,6 +174,7 @@ def update_user_profile(request):
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
         user.save()
+        
 
         return Response({"detail": "Profile updated successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
