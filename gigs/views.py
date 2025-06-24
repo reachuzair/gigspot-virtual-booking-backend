@@ -101,8 +101,8 @@ def list_gigs(request):
                 (Q(gig_type=GigType.VENUE_GIG, status='approved'))
             )
         elif hasattr(user, 'fan'):
-            # Fans can see all approved gigs
-            gigs = gigs.filter(status='approved')
+            # Fans can only see approved artist gigs
+            gigs = gigs.filter(status='approved', gig_type=GigType.ARTIST_GIG)
     else:
         # Unauthenticated users see nothing
         gigs = gigs.none()
@@ -510,7 +510,9 @@ def accept_invite_request(request, id):
             return Response({'detail': 'Gig invite not found'}, status=status.HTTP_404_NOT_FOUND)
         gig_invite.status = GigInviteStatus.ACCEPTED
         gig_invite.save()
+        # Add artist to both invitees and collaborators
         gig.invitees.add(artist)
+        gig.collaborators.add(artist.user)
         gig.save()
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
