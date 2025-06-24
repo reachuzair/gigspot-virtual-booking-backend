@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('custom_auth', '0033_remove_venue_tier_alter_artist_subscription_tier_and_more'),
+        ('custom_auth', '0032_merge_20250618_1918'),
     ]
 
     operations = [
