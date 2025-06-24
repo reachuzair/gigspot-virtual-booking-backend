@@ -1,12 +1,120 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, date, timedelta
 from django.utils.text import slugify
+from django.db.models import F, ExpressionWrapper, FloatField, Sum
+from django.utils.functional import cached_property
+from model_utils import FieldTracker
+from decimal import Decimal, ROUND_HALF_UP
 import random
 import logging
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
+
+
+class ArtistMonthlyMetrics(models.Model):
+    """
+    Tracks monthly metrics for artists, storing only the essential percentage metrics needed for analytics.
+    """
+    artist = models.ForeignKey(
+        'Artist',
+        on_delete=models.CASCADE,
+        related_name='monthly_metrics'
+    )
+    month = models.DateField(
+        help_text="First day of the month these metrics represent"
+    )
+    
+    # Core Percentage Metrics (0-100 scale)
+    fan_engagement_pct = models.FloatField(
+        default=0.0,
+        help_text="Fan engagement as a percentage (0-100)"
+    )
+    social_following_pct = models.FloatField(
+        default=0.0,
+        help_text="Social media following as a percentage of max possible (0-100)"
+    )
+    playlist_views_pct = models.FloatField(
+        default=0.0,
+        help_text="Playlist views as a percentage of max possible (0-100)"
+    )
+    buzz_score_pct = models.FloatField(
+        default=0.0,
+        help_text="Buzz score as a percentage (0-100)"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Artist Monthly Metrics"
+        unique_together = ('artist', 'month')
+        ordering = ['-month']
+        indexes = [
+            models.Index(fields=['month']),
+            models.Index(fields=['artist', 'month']),
+        ]
+    
+    def __str__(self):
+        return f"{self.artist} - {self.month.strftime('%B %Y')}"
+    
+    def calculate_fan_engagement(self):
+        """Calculate fan engagement rate based on streams and monthly listeners."""
+        if self.monthly_listeners > 0:
+            engagement = (Decimal(self.streams) / self.monthly_listeners) * 100
+            return engagement.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return Decimal('0.00')
+    
+    def calculate_social_growth(self, previous_month):
+        """Calculate social media growth rate compared to previous month."""
+        if not previous_month:
+            return Decimal('0.00')
+            
+        current_total = sum([
+            self.instagram_followers,
+            self.tiktok_followers,
+            self.spotify_followers,
+            self.youtube_subscribers
+        ])
+        
+        previous_total = sum([
+            previous_month.instagram_followers,
+            previous_month.tiktok_followers,
+            previous_month.spotify_followers,
+            previous_month.youtube_subscribers
+        ])
+        
+        if previous_total > 0:
+            growth = ((current_total - previous_total) / previous_total) * 100
+            return Decimal(str(growth)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return Decimal('0.00')
+    
+    def save(self, *args, **kwargs):
+        # Ensure month is set to the first day of the month
+        if isinstance(self.month, (datetime, date)):
+            self.month = self.month.replace(day=1)
+        
+        # Calculate metrics if not set
+        if not self.pk or 'fan_engagement_rate' not in kwargs.get('update_fields', []):
+            self.fan_engagement_rate = self.calculate_fan_engagement()
+            
+            # Calculate social growth if we have a previous month
+            if not self.pk:  # Only on create
+                prev_month = self.month - timedelta(days=1)
+                prev_month = prev_month.replace(day=1)
+                try:
+                    prev_metrics = ArtistMonthlyMetrics.objects.get(
+                        artist=self.artist,
+                        month=prev_month
+                    )
+                    self.social_growth_rate = self.calculate_social_growth(prev_metrics)
+                except ArtistMonthlyMetrics.DoesNotExist:
+                    self.social_growth_rate = Decimal('0.00')
+        
+        super().save(*args, **kwargs)
 
 
 class UserManager(BaseUserManager):
@@ -601,17 +709,61 @@ class Artist(models.Model):
         unique=True,
         help_text='SoundCharts artist UUID for fetching tier information'
     )
-    follower_count = models.PositiveIntegerField(
+    monthly_listeners = models.PositiveIntegerField(
         default=0,
-        help_text="Number of followers from SoundCharts"
+        help_text="Number of monthly listeners on streaming platforms"
     )
-    buzz_score = models.IntegerField(
+    streams = models.BigIntegerField(
         default=0,
-        help_text="Artist's buzz score for trending"
+        help_text="Total number of streams across all platforms"
+    )
+    # Social media followers
+    instagram_followers = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of Instagram followers"
+    )
+    tiktok_followers = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of TikTok followers"
+    )
+    spotify_followers = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of Spotify followers"
+    )
+    youtube_subscribers = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of YouTube subscribers"
+    )
+    # Analytics fields
+    playlist_views = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of playlist views"
+    )
+    # Engagement and buzz metrics as percentages (0-100)
+    fan_engagement_pct = models.FloatField(
+        default=0.0,
+        help_text="Fan engagement as a percentage (0-100)"
+    )
+    buzz_score_pct = models.FloatField(
+        default=0.0,
+        help_text="Buzz score as a percentage (0-100)"
+    )
+    social_following_pct = models.FloatField(
+        default=0.0,
+        help_text="Social media following as a percentage of max possible (0-100)"
+    )
+    playlist_views_pct = models.FloatField(
+        default=0.0,
+        help_text="Playlist views as a percentage of max possible (0-100)"
     )
     onFireStatus = models.BooleanField(
         default=False,
         help_text="Whether the artist is currently trending"
+    )
+    last_metrics_update = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the metrics were last updated"
     )
     connections = models.ManyToManyField(
         'self', 
@@ -638,8 +790,23 @@ class Artist(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     objects = ArtistManager()
+    
+    # Track changes to metrics fields
+    metrics_tracker = FieldTracker(fields=[
+        'instagram_followers',
+        'tiktok_followers',
+        'spotify_followers',
+        'youtube_subscribers',
+        'playlist_views',
+        'fan_engagement_pct',
+        'buzz_score_pct',
+        'onFireStatus',
+        'monthly_listeners',
+        'streams',
+        'social_following_pct',
+        'playlist_views_pct'
+    ])
 
     class Meta:
         ordering = ['-created_at']
@@ -648,7 +815,7 @@ class Artist(models.Model):
         indexes = [
             models.Index(fields=['performance_tier']),
             models.Index(fields=['subscription_tier']),
-            models.Index(fields=['buzz_score']),
+            models.Index(fields=['buzz_score_pct']),
         ]
 
     def __str__(self):
@@ -661,7 +828,7 @@ class Artist(models.Model):
 
     def update_metrics_from_soundcharts(self, force_update=False):
         """
-        Update artist metrics using SoundCharts API
+        Update artist metrics using SoundCharts API and calculate buzz score
         
         Args:
             force_update (bool): If True, force update even if recently updated
@@ -669,142 +836,687 @@ class Artist(models.Model):
         Returns:
             dict: Result of the update with status and data
         """
+        print(f"[DEBUG] Starting update_metrics_from_soundcharts for artist {self.id} (UUID: {self.soundcharts_uuid})")
+        
+        # Initialize SoundCharts API client
+        from services.soundcharts import SoundChartsAPI
+        soundcharts = SoundChartsAPI()
+        
+        # If we don't have a UUID, try to find the artist by  full name
         if not self.soundcharts_uuid:
+            artist_name = self.full_name or (self.user.full_name if hasattr(self.user, 'full_name') and self.user.full_name else None)
+            if not artist_name:
+                return {
+                    'success': False,
+                    'message': 'No artist name available for search. Please set a band name or full name.',
+                    'code': 'missing_name'
+                }
+                
+            print(f"[DEBUG] No SoundCharts UUID found, searching for artist by name: {artist_name}")
+            search_result = soundcharts.search_artist_by_name(artist_name)
+            
+            if 'uuid' in search_result:
+                self.soundcharts_uuid = search_result['uuid']
+                self.save(update_fields=['soundcharts_uuid', 'updated_at'])
+                print(f"[DEBUG] Found SoundCharts UUID: {self.soundcharts_uuid}")
+            else:
+                print(f"[WARNING] Could not find artist on SoundCharts: {search_result.get('error', 'Unknown error')}")
+                return {
+                    'success': False,
+                    'message': f"Could not find artist on SoundCharts: {search_result.get('error', 'Unknown error')}",
+                    'code': 'artist_not_found'
+                }
+            
+        # Check if we have a UUID now
+        if not self.soundcharts_uuid:
+            print("[ERROR] No SoundCharts UUID available after search")
             return {
                 'success': False,
-                'error': 'No SoundCharts UUID set for this artist',
+                'message': 'No SoundCharts UUID available',
                 'code': 'missing_uuid'
             }
             
         # Check if we recently updated (within 24 hours)
-        if not force_update and self.last_tier_update:
-            time_since_update = timezone.now() - self.last_tier_update
-            if time_since_update < timedelta(hours=24):
+        if not force_update and self.last_metrics_update:
+            time_since_update = timezone.now() - self.last_metrics_update
+            if time_since_update.total_seconds() < 24 * 60 * 60:  # 24 hours
+                print("[DEBUG] Metrics updated recently, skipping")
                 return {
                     'success': True,
-                    'tier': self.performance_tier,
-                    'tier_display': self.get_performance_tier_display(),
-                    'last_updated': self.last_tier_update.isoformat(),
-                    'message': 'Using cached data (updated recently)',
-                    'cached': True
+                    'message': 'Metrics updated recently',
+                    'code': 'recently_updated'
                 }
-
-        from services.soundcharts import SoundChartsAPI
+            
         try:
-            soundcharts = SoundChartsAPI()
+            from services.soundcharts import SoundChartsAPI
             
-            # Get artist summary for followers and other metrics
-            summary_endpoint = f"{soundcharts.BASE_URL}/artist/{self.soundcharts_uuid}/summary"
-            summary = soundcharts._make_request(summary_endpoint)
+            # Initialize API client
+            print("[DEBUG] Initializing SoundCharts API client")
+            api = SoundChartsAPI()
             
-            if 'error' in summary:
+            # Get artist metrics including buzz score
+            print(f"[DEBUG] Fetching metrics for UUID: {self.soundcharts_uuid}")
+            result = api.get_artist_buzz_score(self.soundcharts_uuid)
+            print(f"[DEBUG] API Response: {result}")
+            
+            if not result or not result.get('success'):
+                error_msg = result.get('error', 'Failed to fetch artist data from SoundCharts')
+                logger.error(f"SoundCharts API error: {error_msg}")
                 return {
                     'success': False,
-                    'error': summary['error'],
-                    'code': 'soundcharts_error'
+                    'message': str(error_msg),
+                    'code': 'fetch_failed'
                 }
-                
-            # Extract metrics
-            follower_count = summary.get('followerCount', 0)
-            monthly_listeners = summary.get('monthlyListeners', 0)
-            total_stream_count = summary.get('totalStreamCount', 0)
             
-            # Update artist fields
-            self.follower_count = follower_count
-            self.performance_tier = PerformanceTier.get_artist_tier(follower_count)
-            self.last_tier_update = timezone.now()
+            print(f"[DEBUG] Full API response: {result}")
             
-            # Save the updated fields
-            update_fields = [
-                'follower_count', 
-                'performance_tier', 
-                'last_tier_update',
-                'updated_at'
-            ]
+            # Check if we got a UUID from the response and update if needed
+            related_data = result.get('related', {})
+            artist_data = related_data.get('artist', {})
+            response_uuid = artist_data.get('uuid')
             
-            # Update buzz score based on metrics
-            self._update_buzz_score(monthly_listeners, total_stream_count)
-            if hasattr(self, '_buzz_updated'):
-                update_fields.append('buzz_score')
-            
-            self.save(update_fields=update_fields)
-            
-            return {
-                'success': True,
-                'tier': self.performance_tier,
-                'tier_display': self.get_performance_tier_display(),
-                'follower_count': self.follower_count,
-                'last_updated': self.last_tier_update.isoformat(),
-                'metrics': {
-                    'monthly_listeners': monthly_listeners,
-                    'total_streams': total_stream_count
+            if response_uuid:
+                if response_uuid != self.soundcharts_uuid:
+                    print(f"[DEBUG] Updating SoundCharts UUID from {self.soundcharts_uuid} to {response_uuid}")
+                    self.soundcharts_uuid = response_uuid
+                    # Save the UUID immediately if this is a new one
+                    self.save(update_fields=['soundcharts_uuid', 'updated_at'])
+                    print("[DEBUG] Saved new SoundCharts UUID to artist record")
+            elif not self.soundcharts_uuid:
+                print("[WARNING] No SoundCharts UUID found in the API response")
+                return {
+                    'success': False,
+                    'message': 'No SoundCharts UUID found in API response',
+                    'code': 'missing_uuid'
                 }
+            
+            # Store original values for change detection
+            original_metrics = {
+                'monthly_listeners': getattr(self, 'monthly_listeners', 0),
+                'instagram_followers': getattr(self, 'instagram_followers', 0),
+                'tiktok_followers': getattr(self, 'tiktok_followers', 0),
+                'spotify_followers': getattr(self, 'spotify_followers', 0),
+                'youtube_subscribers': getattr(self, 'youtube_subscribers', 0),
+                'fan_engagement_pct': getattr(self, 'fan_engagement_pct', 0.0),
+                'buzz_score_pct': getattr(self, 'buzz_score_pct', 0.0),
+                'social_following_pct': getattr(self, 'social_following_pct', 0.0),
+                'playlist_views_pct': getattr(self, 'playlist_views_pct', 0.0)
+            }
+            print(f"[DEBUG] Original metrics: {original_metrics}")
+            
+            # Get metrics from the API response
+            metrics = result.get('metrics', {})
+            platform_breakdown = metrics.get('platform_breakdown', {})
+            
+            # Update platform followers from platform_breakdown
+            instagram_data = platform_breakdown.get('instagram', {})
+            tiktok_data = platform_breakdown.get('tiktok', {})
+            youtube_data = platform_breakdown.get('youtube', {})
+            spotify_data = platform_breakdown.get('spotify', {})
+            
+            # Update platform followers with proper type conversion and defaults
+            self.instagram_followers = int(instagram_data.get('followers', 0) or 0)
+            self.tiktok_followers = int(tiktok_data.get('followers', 0) or 0)
+            self.youtube_subscribers = int(youtube_data.get('followers', 0) or 0)
+            self.spotify_followers = int(spotify_data.get('followers', 0) or 0)
+            
+            # Update monthly listeners (from spotify's monthly_listeners)
+            self.monthly_listeners = int(spotify_data.get('monthly_listeners', 0) or 0)
+            
+            # No longer using _update_buzz_score as we calculate it directly above
+            # with the new weighted average formula
+            
+            print(f"[DEBUG] Updated platform followers - "
+                  f"Instagram: {self.instagram_followers}, "
+                  f"TikTok: {self.tiktok_followers}, "
+                  f"Spotify: {self.spotify_followers}, "
+                  f"YouTube: {self.youtube_subscribers}")
+            print(f"[DEBUG] Updated monthly_listeners: {self.monthly_listeners}")
+            print(f"[DEBUG] Updated buzz_score_pct: {self.buzz_score_pct}")
+            
+            # Update performance tier based on total followers
+            total_followers = int(metrics.get('total_followers', 0))
+            self.performance_tier = PerformanceTier.get_artist_tier(total_followers)
+            print(f"[DEBUG] Updated performance tier to {self.performance_tier} based on {total_followers} total followers")
+            
+            # Calculate the four key metrics as percentages
+            # 1. Fan Engagement (%)
+            # Get engagement rate from metrics if available, otherwise use 0
+            metrics = result.get('metrics', {})
+            fan_engagement = float(metrics.get('engagement_rate', 0.0)) * 100  # Convert from decimal to percentage
+            
+            # 2. Social Media Following (% of max possible for tier)
+            max_followers_by_tier = {
+                PerformanceTier.FRESH_TALENT: 10_000,        # 10K
+                PerformanceTier.NEW_BLOOD: 100_000,       # 100K
+                PerformanceTier.UP_AND_COMING: 500_000,   # 500K
+                PerformanceTier.RISING_STAR: 2_000_000,   # 2M
+                PerformanceTier.SCENE_KING: 5_000_000,    # 5M
+                PerformanceTier.ROCKSTAR: 20_000_000,     # 20M
+                PerformanceTier.GOLIATH: 100_000_000      # 100M
             }
             
+            max_possible_followers = max_followers_by_tier.get(self.performance_tier, 10_000_000)  # Default to 10M if tier not found
+            social_following_pct = min((total_followers / max_possible_followers) * 100, 100) if max_possible_followers > 0 else 0
+            
+            # 3. Playlist Views Percentage (Total Playlist Views / Max For Tier) * 100
+            playlist_views = result.get('playlist_views', {})
+            total_playlist_views = int(playlist_views.get('count', 0) or 0)
+            
+            # Determine max possible playlist views based on artist tier
+            max_playlist_views_by_tier = {
+                PerformanceTier.FRESH_TALENT: 100_000,      # 100K
+                PerformanceTier.NEW_BLOOD: 500_000,        # 500K
+                PerformanceTier.UP_AND_COMING: 1_000_000,  # 1M
+                PerformanceTier.RISING_STAR: 5_000_000,    # 5M
+                PerformanceTier.SCENE_KING: 10_000_000,    # 10M
+                PerformanceTier.ROCKSTAR: 25_000_000,      # 25M
+                PerformanceTier.GOLIATH: 100_000_000       # 100M
+            }
+            
+            max_possible_playlist_views = max_playlist_views_by_tier.get(self.performance_tier, 10_000_000)  # Default to 10M if tier not found
+            playlist_views_pct = min((total_playlist_views / max_possible_playlist_views) * 100, 100) if max_possible_playlist_views > 0 else 0
+            
+            # 4. Calculate Buzz Score (weighted average)
+            # Weights: Fan Engagement (40%), Social Following (30%), Playlist Views (30%)
+            buzz_score_pct = (
+                (fan_engagement * 0.4) + 
+                (social_following_pct * 0.3) + 
+                (playlist_views_pct * 0.3)
+            )
+            
+            # Store the calculated percentages
+            self.fan_engagement_pct = fan_engagement
+            self.social_following_pct = social_following_pct
+            self.playlist_views_pct = playlist_views_pct
+            self.buzz_score_pct = buzz_score_pct
+            self.playlist_views = total_playlist_views  # Store the raw count as well
+            
+            # Set onFireStatus based on buzz score (70% or higher)
+            on_fire = buzz_score_pct >= 70
+            if self.onFireStatus != on_fire:
+                self.onFireStatus = on_fire
+                changed_fields = changed_fields or []
+                changed_fields.append('onFireStatus')
+            
+            print(f"[DEBUG] Calculated metrics - "
+                  f"Fan Engagement: {fan_engagement:.2f}%, "
+                  f"Social Following: {social_following_pct:.2f}%, "
+                  f"Playlist Views: {playlist_views_pct:.2f}%, "
+                  f"Buzz Score: {self.buzz_score_pct:.2f}%")
+            
+            # Update timestamps
+            current_time = timezone.now()
+            self.last_metrics_update = current_time
+            self.last_tier_update = current_time
+            
+            # Define fields to update and track changes
+            update_fields = [
+                'monthly_listeners',
+                'instagram_followers',
+                'tiktok_followers',
+                'spotify_followers',
+                'youtube_subscribers',
+                'performance_tier',
+                'last_metrics_update',
+                'last_tier_update',
+                'updated_at',
+                'fan_engagement_pct',
+                'social_following_pct',
+                'playlist_views_pct',
+                'buzz_score_pct',
+                'onFireStatus',
+                'playlist_views'
+            ]
+            
+            # Only include fields that actually exist on the model
+            update_fields = [f for f in update_fields if hasattr(self, f)]
+            print(f"[DEBUG] Fields to check for changes: {update_fields}")
+            
+            # Track changed fields
+            changed_fields = []
+            for field in update_fields:
+                current_value = getattr(self, field, None)
+                if field in original_metrics:
+                    old_value = original_metrics[field]
+                    # Convert to same type for comparison
+                    if isinstance(old_value, float) and isinstance(current_value, (int, float)):
+                        old_value = float(old_value)
+                        current_value = float(current_value)
+                    
+                    if current_value != old_value:
+                        print(f"[DEBUG] Field changed - {field}: {old_value} ({type(old_value)}) -> {current_value} ({type(current_value)})")
+                        changed_fields.append(field)
+                    else:
+                        print(f"[DEBUG] No change in field: {field} ({current_value} - {type(current_value)})")
+            
+            # Always update timestamps
+            if 'last_metrics_update' not in changed_fields:
+                changed_fields.append('last_metrics_update')
+            if 'last_tier_update' not in changed_fields:
+                changed_fields.append('last_tier_update')
+            if 'updated_at' not in changed_fields:
+                changed_fields.append('updated_at')
+            
+            if changed_fields:
+                print(f"[DEBUG] Saving changes for fields: {changed_fields}")
+                self.save(update_fields=changed_fields)
+                logger.info(f"Successfully updated metrics for artist {self.id}: {', '.join(changed_fields)}")
+                return {
+                    'success': True,
+                    'updated': True,
+                    'updated_fields': changed_fields,
+                    'metrics': metrics,
+                    'message': f'Updated {len(changed_fields)} fields for artist {self.id}'
+                }
+            else:
+                logger.info(f"No metric changes detected for artist {self.id}")
+                return {
+                    'success': True,
+                    'updated': False,
+                    'message': 'No changes detected',
+                    'metrics': metrics
+                }
+
+            # Update monthly metrics if any metrics changed
+            if hasattr(self, 'get_current_month_metrics') and any(field in changed_fields for field in [
+                'monthly_listeners', 'instagram_followers',
+                'tiktok_followers', 'spotify_followers', 
+                'youtube_subscribers', 'engagement_rate', 'buzz_score'
+            ]):
+                try:
+                    metrics = self.get_current_month_metrics()
+                    if metrics:
+                        update_data = {}
+                        if 'monthly_listeners' in changed_fields:
+                            update_data['monthly_listeners'] = self.monthly_listeners
+                        if 'instagram_followers' in changed_fields:
+                            update_data['instagram_followers'] = self.instagram_followers
+                        if 'tiktok_followers' in changed_fields:
+                            update_data['tiktok_followers'] = self.tiktok_followers
+                        if 'spotify_followers' in changed_fields:
+                            update_data['spotify_followers'] = self.spotify_followers
+                        if 'youtube_subscribers' in changed_fields:
+                            update_data['youtube_subscribers'] = self.youtube_subscribers
+                        if 'engagement_rate' in changed_fields:
+                            update_data['engagement_rate'] = self.engagement_rate
+                        if 'buzz_score' in changed_fields:
+                            update_data['buzz_score'] = self.buzz_score
+                        
+                        if update_data:
+                            for key, value in update_data.items():
+                                setattr(metrics, key, value)
+                            metrics.save()
+                            print(f"[DEBUG] Updated monthly metrics for artist {self.id}")
+                except Exception as e:
+                    logger.error(f"Error updating monthly metrics for artist {self.id}: {str(e)}")
+                    print(f"[ERROR] Failed to update monthly metrics: {str(e)}")
+
+            # Calculate and update buzz score if the method exists
+            if hasattr(self, '_update_buzz_score'):
+                try:
+                    monthly_listeners = getattr(self, 'monthly_listeners', 0)
+                    streams = getattr(self, 'streams', 0)
+                    self._update_buzz_score(monthly_listeners, streams)
+                    
+                    # Save again if buzz score changed
+                    if 'buzz_score' not in changed_fields or 'onFireStatus' not in changed_fields:
+                        self.save(update_fields=['buzz_score', 'onFireStatus', 'updated_at'])
+                except Exception as e:
+                    logger.error(f"Error updating buzz score for artist {getattr(self, 'id', 'unknown')}: {str(e)}")
+            
+            # Save monthly metrics
+            try:
+                current_month = timezone.now().replace(day=1).date()
+                metrics, created = ArtistMonthlyMetrics.objects.update_or_create(
+                    artist=self,
+                    month=current_month,
+                    defaults={
+                        'fan_engagement_pct': self.fan_engagement_pct,
+                        'social_following_pct': self.social_following_pct,
+                        'playlist_views_pct': self.playlist_views_pct,
+                        'buzz_score_pct': self.buzz_score_pct,
+                    }
+                )
+                logger.info(f"Saved monthly metrics for artist {self.id} - {current_month.strftime('%B %Y')}")
+            except Exception as e:
+                logger.error(f"Error saving monthly metrics for artist {self.id}: {str(e)}", exc_info=True)
+            
+            # Prepare response data
+            response_data = {
+                'success': True,
+                'message': 'Metrics updated successfully',
+                'metrics_updated': len(changed_fields) > 0,
+                'buzz_score': self.buzz_score_pct,
+                'on_fire': self.onFireStatus,
+            }
+            
+            # Add metrics summary if available
+            if hasattr(self, 'get_metrics_summary'):
+                try:
+                    metrics_summary = self.get_metrics_summary()
+                    if metrics_summary:
+                        response_data['metrics'] = {
+                            'current_month': {
+                                'fan_engagement': float(metrics_summary.get('current_month', {}).get('fan_engagement_rate', 0)) if metrics_summary.get('current_month') else 0,
+                                'social_following': sum([
+                                    metrics_summary['current_month'].get('instagram_followers', 0),
+                                    metrics_summary['current_month'].get('tiktok_followers', 0),
+                                    metrics_summary['current_month'].get('spotify_followers', 0),
+                                    metrics_summary['current_month'].get('youtube_subscribers', 0)
+                                ]) if metrics_summary.get('current_month') else 0,
+                                'playlist_views': metrics_summary['current_month'].get('playlist_views', 0) if metrics_summary.get('current_month') else 0,
+                                'month': metrics_summary['current_month'].get('month', timezone.now().strftime('%Y-%m')) if metrics_summary.get('current_month') else None
+                            },
+                            'previous_month': {
+                                'fan_engagement': float(metrics_summary.get('previous_month', {}).get('fan_engagement_rate', 0)) if metrics_summary.get('previous_month') else 0,
+                                'social_following': sum([
+                                    metrics_summary['previous_month'].get('instagram_followers', 0),
+                                    metrics_summary['previous_month'].get('tiktok_followers', 0),
+                                    metrics_summary['previous_month'].get('spotify_followers', 0),
+                                    metrics_summary['previous_month'].get('youtube_subscribers', 0)
+                                ]) if metrics_summary.get('previous_month') else 0,
+                                'playlist_views': metrics_summary['previous_month'].get('playlist_views', 0) if metrics_summary.get('previous_month') else 0,
+                                'month': metrics_summary['previous_month'].get('month', (timezone.now() - timedelta(days=30)).strftime('%Y-%m')) if metrics_summary.get('previous_month') else None
+                            },
+                            'changes': {
+                                'fan_engagement': float(metrics_summary.get('engagement_change', 0)),
+                                'social_growth': float(metrics_summary.get('social_growth', 0)),
+                                'playlist_views': float(metrics_summary.get('playlist_views_change', 0))
+                            }
+                        }
+                except Exception as e:
+                    logger.error(f"Error getting metrics summary for artist {getattr(self, 'id', 'unknown')}: {str(e)}")
+            
+            return response_data
+            
         except Exception as e:
-            logger.error(f"Error updating artist metrics from SoundCharts: {e}", 
-                       exc_info=True)
+            error_msg = f"Error updating metrics for artist {getattr(self, 'id', 'unknown')}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             return {
                 'success': False,
-                'error': str(e),
-                'code': 'update_error'
+                'message': str(e),
+                'code': 'update_failed'
             }
             
     def _update_buzz_score(self, monthly_listeners, total_streams):
-        """Calculate and update the artist's buzz score"""
-        # Simple algorithm - can be enhanced based on business requirements
-        # This is a placeholder - adjust weights as needed
+        """
+        Calculate and update the artist's buzz score based on various metrics.
+        The score is calculated on a scale of 0-100, where 70+ is considered "On Fire".
         
-        # Reset buzz score
-        new_buzz = 0
+        Args:
+            monthly_listeners (int): Number of monthly listeners
+            total_streams (int): Total number of streams
+        """
+        # Initialize score components
+        score_components = {
+            'follower_growth': 0,      # Based on follower growth rate (if available)
+            'engagement': 0,           # Based on engagement rate
+            'recent_activity': 0,     # Based on recent releases/activity
+            'playlist_performance': 0, # Based on playlist adds/performance
+            'consistency': 0          # Based on consistency across platforms
+        }
         
-        # Add points based on follower growth rate (if we had historical data)
-        # For now, just use current follower count
-        if self.follower_count > 0:
-            if self.follower_count > 1000000:
-                new_buzz += 50
-            elif self.follower_count > 500000:
-                new_buzz += 40
-            elif self.follower_count > 100000:
-                new_buzz += 30
-            elif self.follower_count > 50000:
-                new_buzz += 20
-            elif self.follower_count > 10000:
-                new_buzz += 10
-                
-        # Add points based on monthly listeners
-        if monthly_listeners > 1000000:
-            new_buzz += 30
-        elif monthly_listeners > 500000:
-            new_buzz += 25
-        elif monthly_listeners > 100000:
-            new_buzz += 20
-        elif monthly_listeners > 50000:
-            new_buzz += 15
-        elif monthly_listeners > 10000:
-            new_buzz += 10
-            
-        # Add points based on total streams (in millions)
-        streams_millions = total_streams / 1000000
+        # 1. Follower Growth (25% weight)
+        # Calculate based on total social media followers
+        total_followers = (
+            (self.instagram_followers or 0) + 
+            (self.tiktok_followers or 0) + 
+            (self.spotify_followers or 0) + 
+            (self.youtube_subscribers or 0)
+        )
+        
+        # Simple tiered approach based on follower count
+        if total_followers > 1000000:
+            score_components['follower_growth'] = 100
+        elif total_followers > 500000:
+            score_components['follower_growth'] = 80
+        elif total_followers > 100000:
+            score_components['follower_growth'] = 60
+        elif total_followers > 50000:
+            score_components['follower_growth'] = 40
+        elif total_followers > 10000:
+            score_components['follower_growth'] = 20
+        else:
+            score_components['follower_growth'] = 10
+        
+        # 2. Engagement (25% weight)
+        # Use the pre-calculated fan_engagement_pct field
+        score_components['engagement'] = min(100, max(0, self.fan_engagement_pct or 0))
+        
+        # 3. Recent Activity (20% weight)
+        # This would ideally use actual activity data, but for now we'll use streams as a proxy
+        streams_millions = (total_streams or 0) / 1000000
         if streams_millions > 100:
-            new_buzz += 20
+            score_components['recent_activity'] = 100
         elif streams_millions > 50:
-            new_buzz += 15
+            score_components['recent_activity'] = 80
         elif streams_millions > 10:
-            new_buzz += 10
+            score_components['recent_activity'] = 60
         elif streams_millions > 1:
-            new_buzz += 5
-            
-        # Cap at 100
-        new_buzz = min(100, new_buzz)
+            score_components['recent_activity'] = 40
+        elif streams_millions > 0.1:
+            score_components['recent_activity'] = 20
+        else:
+            score_components['recent_activity'] = 10
+        
+        # 4. Playlist Performance (15% weight)
+        # Use the pre-calculated playlist_views_pct field
+        score_components['playlist_performance'] = min(100, max(0, self.playlist_views_pct or 0))
+        
+        # 5. Consistency (15% weight)
+        # Check if artist has presence across multiple platforms
+        platform_count = sum([
+            1 if getattr(self, f'{platform}_followers', 0) > 0 else 0 
+            for platform in ['instagram', 'tiktok', 'spotify', 'youtube']
+        ])
+        
+        # Score based on number of platforms with presence
+        if platform_count >= 4:
+            score_components['consistency'] = 100
+        elif platform_count == 3:
+            score_components['consistency'] = 75
+        elif platform_count == 2:
+            score_components['consistency'] = 50
+        else:
+            score_components['consistency'] = 25
+        
+        # Calculate weighted score (0-100 scale)
+        weights = {
+            'follower_growth': 0.25,
+            'engagement': 0.25,
+            'recent_activity': 0.20,
+            'playlist_performance': 0.15,
+            'consistency': 0.15
+        }
+        
+        # Calculate weighted sum (0-100 scale)
+        new_buzz_pct = sum(
+            score * weights[component] 
+            for component, score in score_components.items()
+        )
+        
+        # Ensure score is within bounds (0-100)
+        new_buzz_pct = max(0, min(100, new_buzz_pct))
         
         # Only update if changed significantly to avoid unnecessary saves
-        if abs(self.buzz_score - new_buzz) > 2:
-            self.buzz_score = new_buzz
-            self._buzz_updated = True
+        if abs((self.buzz_score_pct or 0) - new_buzz_pct) > 1.0:  # 1% threshold
+            self.buzz_score_pct = round(new_buzz_pct, 1)
+        
+        # Update onFireStatus (threshold is 70/100 = 70%)
+        self.onFireStatus = new_buzz_pct >= 70
+
+    def get_current_month_metrics(self):
+        """Get or create metrics for the current month."""
+        today = timezone.now().date()
+        current_month = today.replace(day=1)
+        
+        # Try to get existing metrics for this month
+        metrics, created = ArtistMonthlyMetrics.objects.get_or_create(
+            artist=self,
+            month=current_month,
+            defaults={
+                'monthly_listeners': self.monthly_listeners or 0,
+                'streams': self.streams or 0,
+                'instagram_followers': self.instagram_followers or 0,
+                'tiktok_followers': self.tiktok_followers or 0,
+                'spotify_followers': self.spotify_followers or 0,
+                'youtube_subscribers': self.youtube_subscribers or 0,
+                'playlist_views': self.playlist_views or 0,
+            }
+        )
+        
+        # If not created, update with latest values
+        if not created:
+            update_fields = []
             
-        # Update onFireStatus based on buzz
-        self.onFireStatus = self.buzz_score >= 70
+            # Only update fields that have changed
+            if metrics.monthly_listeners != self.monthly_listeners:
+                metrics.monthly_listeners = self.monthly_listeners or 0
+                update_fields.append('monthly_listeners')
+                
+            if metrics.streams != self.streams:
+                metrics.streams = self.streams or 0
+                update_fields.append('streams')
+                
+            if metrics.instagram_followers != self.instagram_followers:
+                metrics.instagram_followers = self.instagram_followers or 0
+                update_fields.append('instagram_followers')
+                
+            if metrics.tiktok_followers != self.tiktok_followers:
+                metrics.tiktok_followers = self.tiktok_followers or 0
+                update_fields.append('tiktok_followers')
+                
+            if metrics.spotify_followers != self.spotify_followers:
+                metrics.spotify_followers = self.spotify_followers or 0
+                update_fields.append('spotify_followers')
+                
+            if metrics.youtube_subscribers != self.youtube_subscribers:
+                metrics.youtube_subscribers = self.youtube_subscribers or 0
+                update_fields.append('youtube_subscribers')
+                
+            if metrics.playlist_views != self.playlist_views:
+                metrics.playlist_views = self.playlist_views or 0
+                update_fields.append('playlist_views')
+            
+            if update_fields:
+                # Add fan_engagement_rate to update_fields to ensure it's recalculated
+                update_fields.extend(['fan_engagement_rate', 'social_growth_rate', 'updated_at'])
+                metrics.save(update_fields=update_fields)
+        
+        return metrics
+    
+    def get_metrics_history(self, months=12):
+        """Get historical metrics for the specified number of months."""
+        end_date = timezone.now().date().replace(day=1)
+        start_date = (end_date - timedelta(days=30*months)).replace(day=1)
+        
+        return self.monthly_metrics.filter(
+            month__gte=start_date,
+            month__lte=end_date
+        ).order_by('month')
+    
+    def calculate_change(self, current, previous):
+        """
+        Calculate the percentage change between two values.
+        
+        Args:
+            current (float): Current value
+            previous (float): Previous value
+            
+        Returns:
+            float: Percentage change (rounded to 2 decimal places)
+        """
+        if previous == 0:
+            return 0.0
+        return round(((current - previous) / previous) * 100, 2)
+        
+    def get_metrics_summary(self):
+        """
+        Get a summary of the artist's current metrics and their trends.
+        Returns a dictionary with current metrics and their changes from the previous period.
+        """
+        current_metrics = {
+            'fan_engagement_pct': self.fan_engagement_pct or 0.0,
+            'social_following_pct': self.social_following_pct or 0.0,
+            'playlist_views_pct': self.playlist_views_pct or 0.0,
+            'buzz_score_pct': self.buzz_score_pct or 0.0,
+        }
+        
+        # Get the most recent monthly metrics for comparison
+        monthly_metrics = self.monthly_metrics.order_by('-month').first()
+        
+        if monthly_metrics:
+            previous_metrics = {
+                'fan_engagement_pct': monthly_metrics.fan_engagement_pct,
+                'social_following_pct': monthly_metrics.social_following_pct,
+                'playlist_views_pct': monthly_metrics.playlist_views_pct,
+                'buzz_score_pct': monthly_metrics.buzz_score_pct,
+            }
+        else:
+            # If no monthly metrics exist, use current values with 0 changes
+            previous_metrics = current_metrics.copy()
+        
+        # Calculate percentage changes
+        changes = {
+            'fan_engagement': self.calculate_change(
+                current_metrics['fan_engagement_pct'], 
+                previous_metrics['fan_engagement_pct']
+            ),
+            'social_following': self.calculate_change(
+                current_metrics['social_following_pct'], 
+                previous_metrics['social_following_pct']
+            ),
+            'playlist_views': self.calculate_change(
+                current_metrics['playlist_views_pct'], 
+                previous_metrics['playlist_views_pct']
+            ),
+            'buzz_score': self.calculate_change(
+                current_metrics['buzz_score_pct'], 
+                previous_metrics['buzz_score_pct']
+            ),
+        }
+        
+        # Update onFireStatus based on 9% or more increase in buzz score
+        buzz_score_change = changes['buzz_score']
+        self.onFireStatus = buzz_score_change >= 9.0  # 9% or more increase triggers on fire status
+        
+        return {
+            'current': current_metrics,
+            'previous': previous_metrics,
+            'changes': changes,
+            'on_fire': self.onFireStatus,
+            'last_updated': self.last_metrics_update.isoformat() if self.last_metrics_update else None
+        }
+    
+    def save(self, *args, **kwargs):
+        # Check if any metrics have changed
+        metrics_changed = any(
+            self.metrics_tracker.has_changed(field)
+            for field in self.metrics_tracker.fields
+        )
+        
+        # Call the parent save first to ensure the instance is saved
+        super().save(*args, **kwargs)
+        
+        # If metrics changed, update the current month's metrics
+        if metrics_changed and any(field in self.metrics_tracker.changed() for field in [
+            'monthly_listeners', 'streams', 'instagram_followers', 
+            'tiktok_followers', 'spotify_followers', 'youtube_subscribers',
+            'playlist_views'
+        ]):
+            self.get_current_month_metrics()
+        
+        # If metrics changed, trigger an async update using thread-based task
+        if metrics_changed:
+            try:
+                from artists.tasks import update_artist_metrics
+                from utils.tasks import run_async
+                run_async(update_artist_metrics, artist_id=self.id)
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error scheduling metrics update: {str(e)}")
 
     def can_invite(self, target_tier):
         INVITATION_RULES = {
@@ -907,12 +1619,29 @@ class Venue(models.Model):
         return dirty_fields
     
     def save(self, *args, **kwargs):
-        # Auto-set venue tier based on capacity
-        if self.capacity is not None and (self._state.adding or 'capacity' in self.get_dirty_fields()):
-            self.tier = VenueTier.get_tier_for_capacity(self.capacity)
+        # Check if any metrics have changed
+        metrics_changed = any(
+            self.metrics_tracker.has_changed(field)
+            for field in self.metrics_tracker.fields
+        )
         
-        # Update the original state after saving
+        # Auto-update the performance tier based on follower count
+        if self.follower_count is not None:
+            self.performance_tier = PerformanceTier.get_tier_for_followers(self.follower_count)
+        
+        # Auto-update the venue tier if capacity changes
+        if hasattr(self, 'venue') and self.venue:
+            if 'capacity' in self.venue.get_dirty_fields():
+                self.venue.tier = VenueTier.get_tier_for_capacity(self.venue.capacity)
+                self.venue.save()
+        
+        # Save the model first to ensure we have an ID
         super().save(*args, **kwargs)
+        
+        # If metrics changed, trigger an async update
+        if metrics_changed:
+            from artists.tasks import update_artist_metrics
+            update_artist_metrics.delay(artist_id=self.id)
         if hasattr(self, '_original_state'):
             delattr(self, '_original_state')
     
