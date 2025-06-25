@@ -29,7 +29,7 @@ def signup(request):
                 label = "Error" if field == "__all__" else field
                 for msg in messages:
                     error_messages.append(f"{label}: {msg}")
-            return Response(" | ".join(error_messages), status=status.HTTP_400_BAD_REQUEST)
+            return Response({"details":" | ".join(error_messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
         stripe_response = None
@@ -104,7 +104,7 @@ def signup(request):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        return Response(str(e), status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail":str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PUT'])
