@@ -60,6 +60,7 @@ gig_urls = [
     path('requests/submitted/', submitted_requests, name='submitted-requests'),
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='signed-events'),
+    path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),
 ]
 
 # Tour URL patterns

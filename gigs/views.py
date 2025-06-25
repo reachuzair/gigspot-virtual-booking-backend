@@ -1603,7 +1603,7 @@ def my_requests(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def signed_events(request):
+def signed_events(request, contract_id=None):
     user = request.user
 
     if hasattr(user, 'venue'):
@@ -1616,20 +1616,57 @@ def signed_events(request):
         return Response({'detail': 'Only artists or venues can view signed events.'}, status=403)
 
     role_filter = {'venue' if role_field == 'venue' else 'artist': role_obj}
+    
+    if contract_id:
+        # Detail view for single contract
+        try:
+            contract = Contract.objects.get(
+                id=contract_id,
+                artist_signed=True,
+                venue_signed=True,
+                **role_filter
+            )
+        except Contract.DoesNotExist:
+            return Response({'detail': 'Signed event not found.'}, status=404)
 
-    contracts = Contract.objects.filter(
-        artist_signed=True, **role_filter).select_related('gig')
-
-    data = [
-        {
-            'contract_id': contract.id,
+        data = {
+                        'contract_id': contract.id,
             'gig_id': contract.gig.id,
             'gig_title': contract.gig.title,
+            'gig_type':contract.gig.gig_type,
+            'is_public':contract.gig.is_public,
             'event_date': contract.gig.event_date,
             'signed_at': contract.updated_at,
-            'price': contract.price
-        } for contract in contracts
-    ]
+            'banner_image': contract.gig.flyer_image.url if contract.gig.flyer_image else None,
+            'price': contract.price,
+            'artist': {
+                'id': contract.gig.created_by.id,
+                'name': contract.gig.created_by.name,
+            }
+            
+        }
+        return Response({'signed_event': data})
+    else:
+        # List view for all signed contracts
+        contracts = Contract.objects.filter(
+            artist_signed=True,
+            venue_signed=True,
+            **role_filter
+        ).select_related('gig')
+
+        data = [
+            {
+                'contract_id': contract.id,
+                'gig_id': contract.gig.id,
+                'gig_title': contract.gig.title,
+                'event_date': contract.gig.event_date,
+                'signed_at': contract.updated_at,
+                'banner_image': contract.gig.flyer_image.url if contract.gig.flyer_image else None,
+                'price': contract.price
+                
+            } for contract in contracts
+        ]
+        return Response({'signed_events': data})
     return Response({'signed_events': data})
 
 
