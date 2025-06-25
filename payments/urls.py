@@ -18,8 +18,8 @@ urlpatterns = [
          name='stripe-onboarding-status'),
 
     # Payment intents
-    path('create-payment-intent/<int:gig_id>/',
-         create_payment_intent, name='create-payment-intent'),
+    path('create-payment-intent/', create_payment_intent, name='create-payment-intent'),
+    path('create-payment-intent/<int:gig_id>/', create_payment_intent, name='create-payment-intent-with-gig'),
 
     # Webhook endpoint
     path('stripe/webhook/', stripe_webhook, name='stripe-webhook'),
@@ -29,5 +29,5 @@ urlpatterns = [
     path('list-tickets/', list_tickets, name='list_tickets'),
     path('capturePaymentIntent/',
          capture_payment_intent, name='create-payment-intent'),
-    path('ticket-details/<int:ticket_id>/',get_purchased_tickets_detail, name='get_purchased_tickets_details'),
+    path('ticket-details/<int:gig_id>/', get_purchased_tickets_detail, name='get_purchased_tickets_details'),
 ]

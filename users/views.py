@@ -58,7 +58,10 @@ def user_profile(request):
             venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan and venue.seating_plan.name else None
             venue_data['proof_document'] = venue.proof_document.url if venue.proof_document and venue.proof_document.name else None
             venue_data['proof_url'] = venue.proof_url if venue.proof_url else None
-            venue_data['logo'] = venue.logo.url if venue.logo and venue.logo.name else None  
+            venue_data['logo'] = venue.logo.url if venue.logo and venue.logo.name else None
+            
+            # Add venue tier classification if available
+            venue_data['tier'] = venue.tier.get_tier_display() if hasattr(venue, 'tier') and venue.tier else None
 
             return venue_data
 

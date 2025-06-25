@@ -44,6 +44,32 @@ class VenueProfileSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Extract and update user-related field
         name = validated_data.pop('name', None)
+        
+        # Check if capacity is being updated
+        capacity = validated_data.get('capacity')
+        print(f"Updating venue - Current capacity: {instance.capacity}, New capacity: {capacity}")
+        
+        if capacity is not None and capacity != instance.capacity:
+            # Get the appropriate tier for the new capacity
+            from custom_auth.models import VenueTier
+            try:
+                print(f"Looking for tier for capacity: {capacity}")
+                new_tier = VenueTier.get_tier_for_capacity(capacity)
+                print(f"Found tier: {new_tier}")
+                if new_tier:
+                    print(f"Setting tier to: {new_tier.tier} - {new_tier.get_tier_display()}")
+                    instance.tier = new_tier
+                else:
+                    print("No matching tier found for capacity:", capacity)
+                    # Let's see what tiers are available
+                    all_tiers = VenueTier.objects.all().order_by('min_capacity')
+                    print("Available tiers:")
+                    for t in all_tiers:
+                        print(f"- {t.tier}: {t.min_capacity} - {t.max_capacity}")
+            except Exception as e:
+                print(f"Error updating venue tier: {e}")
+                import traceback
+                traceback.print_exc()
 
         if name is not None:
             instance.user.name = name
