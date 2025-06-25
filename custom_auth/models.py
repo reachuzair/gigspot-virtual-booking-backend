@@ -1589,6 +1589,13 @@ class Venue(models.Model):
     logo = models.ImageField(upload_to='venue_logos/', blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     state = models.CharField(max_length=100, blank=True, null=True)
+    tier = models.ForeignKey(
+        'VenueTier',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        help_text="The venue's performance tier based on capacity"
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1618,29 +1625,16 @@ class Venue(models.Model):
         return dirty_fields
     
     def save(self, *args, **kwargs):
-        # Check if any metrics have changed
-        metrics_changed = any(
-            self.metrics_tracker.has_changed(field)
-            for field in self.metrics_tracker.fields
-        )
+        # Check if capacity has changed
+        if hasattr(self, '_original_state') and 'capacity' in self._original_state:
+            if self._original_state['capacity'] != self.capacity:
+                # Capacity has changed, update the tier
+                self.tier = VenueTier.get_tier_for_capacity(self.capacity)
         
-        # Auto-update the performance tier based on follower count
-        if self.follower_count is not None:
-            self.performance_tier = PerformanceTier.get_tier_for_followers(self.follower_count)
-        
-        # Auto-update the venue tier if capacity changes
-        if hasattr(self, 'venue') and self.venue:
-            if 'capacity' in self.venue.get_dirty_fields():
-                self.venue.tier = VenueTier.get_tier_for_capacity(self.venue.capacity)
-                self.venue.save()
-        
-        # Save the model first to ensure we have an ID
+        # Save the model
         super().save(*args, **kwargs)
         
-        # If metrics changed, trigger an async update
-        if metrics_changed:
-            from artists.tasks import update_artist_metrics
-            update_artist_metrics.delay(artist_id=self.id)
+        # Clean up
         if hasattr(self, '_original_state'):
             delattr(self, '_original_state')
     
