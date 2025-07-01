@@ -16,6 +16,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
     bannerImage = serializers.ImageField(source='logo', read_only=True)
     likes = serializers.IntegerField(source='likes.count', read_only=True)
+    is_liked = serializers.SerializerMethodField()
 
     def get_artistGenre(self, obj):
         # Get the first gig for this artist
@@ -25,11 +26,16 @@ class ArtistSerializer(serializers.ModelSerializer):
             
         # Return genre from details JSON field if available
         return gig.details.get('genre') if gig.details else None
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.likes.filter(id=request.user.id).exists()
     
     class Meta:
         model = Artist
         fields = [
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes'
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked'
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
 
