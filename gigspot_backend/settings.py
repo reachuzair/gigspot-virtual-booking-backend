@@ -42,6 +42,7 @@ ALLOWED_HOSTS = [
     'chilly-taxis-wear.loca.lt'
     'gigspot-ws-alb-1735954155.eu-north-1.elb.amazonaws.com',
     'socket.gigspotvb.com',
+    '0b98-119-160-56-216.ngrok-free.app'
 ]
 
 AUTH_USER_MODEL = 'custom_auth.User'
@@ -327,3 +328,4 @@ LOGGING = {
         },
     },
 }
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
