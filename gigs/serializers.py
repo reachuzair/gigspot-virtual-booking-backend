@@ -115,9 +115,6 @@ class GigSerializer(serializers.ModelSerializer):
         if not obj.flyer_image:
             return None
         try:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.flyer_image.url)
             return str(obj.flyer_image.url)
         except (ValueError, AttributeError):
             return None
