@@ -781,7 +781,7 @@ def add_gig_venue_fee(request, id):
 def update_gig_status(request, id):
     user = request.user
 
-    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
+    if user.role not in [ROLE_CHOICES.VENUE]:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
     data = request.data.copy()

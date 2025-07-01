@@ -5,10 +5,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from custom_auth.models import Artist, PerformanceTier
+from custom_auth.models import Artist, PerformanceTier, Venue
+from gigs.models import Gig, Status
+from gigs.serializers import GigSerializer
 from .serializers import ArtistSerializer, ArtistAnalyticsSerializer
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
+
+import math
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -104,3 +108,43 @@ class ArtistAnalyticsView(APIView):
         # Serialize and return the data
         serializer = ArtistAnalyticsSerializer(artist)
         return Response(serializer.data)
+    
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_nearby_events(request):
+    user = request.user
+
+    # Ensure only artists are allowed
+    if user.role != 'artist':
+        return Response(
+            {"detail": "Only artists can access nearby events."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        artist = Artist.objects.get(user=user)
+        city = artist.city
+        state = artist.state
+    except Artist.DoesNotExist:
+        return Response(
+            {"detail": "Artist profile not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if not city or not state:
+        return Response(
+            {"detail": "Your artist profile is missing city/state."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Filter gigs based on matching venue city/state
+    gigs = Gig.objects.filter(
+        status=Status.APPROVED,
+        is_public=True,
+        venue__city__iexact=city.strip(),
+        venue__state__iexact=state.strip()
+    ).select_related('venue')
+
+    serializer = GigSerializer(gigs, many=True, context={'request': request})
+    return Response({'results': serializer.data})
