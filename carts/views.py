@@ -35,7 +35,12 @@ def add_to_cart(request):
 @permission_classes([IsAuthenticated])
 def list_cart_items(request):
     user = request.user
-    cart_items = CartItem.objects.filter(user=user, is_booked=False)
+    # Filter out items with quantity 0 or None
+    cart_items = CartItem.objects.filter(
+        user=user, 
+        is_booked=False,
+        quantity__gt=0 
+    )
     serializer = CartItemSerializer(cart_items, many=True)
     return Response(serializer.data)
 
@@ -45,9 +50,11 @@ def list_cart_items(request):
 def remove_from_cart(request):
     user = request.user
     gig_id = request.data.get('gig_id')
+    print(gig_id)
     try:
         cart_item = CartItem.objects.get(
             user=user, gig=gig_id, is_booked=False)
+        print(cart_item)
         cart_item.delete()
         return Response({'detail': 'Gig removed from cart successfully.'}, status=status.HTTP_200_OK)
     except CartItem.DoesNotExist:
