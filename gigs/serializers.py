@@ -1,13 +1,9 @@
-import json
-from rest_framework import serializers
 from django.utils import timezone
-from django.core.files.storage import default_storage
-
-
-from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourStatus
-
-from users.serializers import UserSerializer
-from custom_auth.models import User, Venue, Artist, PerformanceTier
+from rest_framework import serializers
+from .models import Gig, Contract, GigInvite, GigType, GigInviteStatus, Tour
+from custom_auth.serializers import UserSerializer
+from custom_auth.models import Venue, PerformanceTier
+from artists.serializers import ArtistListSerializer
 
 
 class VenueSerializer(serializers.ModelSerializer):
@@ -20,19 +16,6 @@ class VenueSerializer(serializers.ModelSerializer):
 
     def get_name(self, obj):
         return obj.user.name if obj.user else None
-
-
-class ArtistSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Artist
-        fields = ['id', 'stage_name', 'profile_image']
-
-
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'email', 'name', 'role', 'profileImage']
-        read_only_fields = ['id', 'email', 'name', 'role', 'profileImage']
 
 
 class TourSerializer(serializers.ModelSerializer):
@@ -65,21 +48,76 @@ class TourSerializer(serializers.ModelSerializer):
 
 
 
-class GigSerializer(serializers.ModelSerializer):
-    """Serializer for Gig model with proper field handling and serialization."""
-
-    # Computed fields
+class BaseGigSerializer(serializers.ModelSerializer):
+    """Base serializer with common functionality for Gig serializers."""
     flyer_image = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_part_of_tour = serializers.BooleanField(read_only=True)
+    tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
+    tour_order = serializers.IntegerField(required=False, allow_null=True)
+    
+    class Meta:
+        model = Gig
+        fields = [
+            'id', 'title', 'description', 'gig_type', 'event_date',
+            'booking_start_date', 'booking_end_date', 'flyer_image',
+            'minimum_performance_tier', 'max_artists', 'max_tickets', 
+            'ticket_price', 'venue_fee', 'status', 'is_public', 'sold_out', 
+            'slot_available', 'is_liked', 'is_part_of_tour', 'tour', 'tour_order',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def get_flyer_image(self, obj):
+        if obj.flyer_image and hasattr(obj.flyer_image, 'url'):
+            return self.context['request'].build_absolute_uri(obj.flyer_image.url)
+        return None
+    
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            return obj.likes.filter(id=request.user.id).exists()
+        return False
+    
+    def validate(self, attrs):
+        """Validate gig data based on gig type"""
+        gig_type = attrs.get('gig_type', self.instance.gig_type if self.instance else None)
+        
+        # For tour gigs, ensure they have a tour and are of type TOUR_GIG
+        if attrs.get('tour') or (self.instance and self.instance.tour):
+            if gig_type != GigType.TOUR_GIG:
+                attrs['gig_type'] = GigType.TOUR_GIG
+            attrs['is_part_of_tour'] = True
+            
+            # Ensure tour order is set for tour gigs
+            if 'tour_order' not in attrs and (not self.instance or not self.instance.tour_order):
+                tour = attrs.get('tour') or (self.instance.tour if self.instance else None)
+                if tour:
+                    last_order = Gig.objects.filter(tour=tour).aggregate(
+                        models.Max('tour_order')
+                    )['tour_order__max'] or 0
+                    attrs['tour_order'] = last_order + 1
+        
+        # For non-tour artist gigs, ensure they don't have tour fields
+        elif gig_type == GigType.ARTIST_GIG:
+            if 'tour' in attrs and attrs['tour'] is not None:
+                raise serializers.ValidationError({
+                    'tour': 'Cannot assign a tour to a non-tour gig.'
+                })
+            attrs['is_part_of_tour'] = False
+            
+        return attrs
+
+
+class GigSerializer(BaseGigSerializer):
+    """Serializer for Gig model with proper field handling and serialization."""
+    # Additional computed fields for list view
     flyer_bg = serializers.SerializerMethodField()
     flyer_bg_url = serializers.SerializerMethodField()
-    is_liked = serializers.SerializerMethodField()
     user = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
     max_artist = serializers.SerializerMethodField()
     price_validation = serializers.SerializerMethodField()
-    is_part_of_tour = serializers.BooleanField(read_only=True)
-    tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
-    tour_order = serializers.IntegerField(required=False, allow_null=True)
     
 
     class Meta:
@@ -247,7 +285,7 @@ class GigInviteSerializer(serializers.ModelSerializer):
     """
     gig = serializers.PrimaryKeyRelatedField(queryset=Gig.objects.all())
     user = UserSerializer(read_only=True)
-    artist_received = ArtistSerializer(read_only=True)
+    artist_received = ArtistListSerializer(read_only=True)
     status = serializers.ChoiceField(
         choices=GigInviteStatus.choices, default=GigInviteStatus.PENDING)
 
@@ -268,37 +306,24 @@ class GigInviteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class GigDetailSerializer(serializers.ModelSerializer):
+class GigDetailSerializer(BaseGigSerializer):
     """
-    Detailed serializer for Gig model with all related fields
+    Detailed serializer for Gig model with all related fields.
+    Extends BaseGigSerializer to include related objects and additional fields.
     """
     likes_count = serializers.SerializerMethodField()
-    is_liked = serializers.SerializerMethodField()
     venue = VenueSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
     collaborators = UserSerializer(many=True, read_only=True)
     invitees = UserSerializer(many=True, read_only=True)
 
-    class Meta:
-        model = Gig
-        fields = [
-            'id', 'title', 'description', 'event_date', 'booking_start_date',
-            'booking_end_date', 'flyer_image', 'minimum_performance_tier',
-            'max_artists', 'max_tickets', 'ticket_price', 'venue_fee',
-            'status', 'gig_type', 'is_public', 'sold_out', 'slot_available',
-            'likes_count', 'is_liked', 'venue', 'created_by', 'collaborators',
-            'invitees', 'created_at', 'updated_at'
+    class Meta(BaseGigSerializer.Meta):
+        fields = BaseGigSerializer.Meta.fields + [
+            'likes_count', 'venue', 'created_by', 'collaborators', 'invitees'
         ]
-        read_only_fields = ['created_at', 'updated_at']
 
     def get_likes_count(self, obj):
         return obj.likes.count()
-
-    def get_is_liked(self, obj):
-        request = self.context.get('request')
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
-            return obj.likes.filter(id=request.user.id).exists()
-        return False
 
 
 class VenueEventSerializer(serializers.ModelSerializer):

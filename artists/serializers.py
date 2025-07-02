@@ -1,40 +1,88 @@
-from datetime import datetime, timedelta
-import logging
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import serializers
 from custom_auth.models import Artist, ArtistMonthlyMetrics
 from gigs.models import Gig
-from django.db.models import Max
-from django.utils import timezone
 
-error_logger = logging.getLogger('error_logger')
-
-class ArtistSerializer(serializers.ModelSerializer):
+class BaseArtistSerializer(serializers.ModelSerializer):
+    """Base serializer for Artist model with common fields and methods."""
     userId = serializers.IntegerField(source='user.id', read_only=True)
     artistName = serializers.CharField(source='user.name', read_only=True)
-    artistGenre = serializers.SerializerMethodField(read_only=True)
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
     bannerImage = serializers.ImageField(source='logo', read_only=True)
-    likes = serializers.IntegerField(source='likes.count', read_only=True)
-
-    def get_artistGenre(self, obj):
-        # Get the first gig for this artist
-        gig = Gig.objects.filter(collaborators=obj.user).first()
-        if not gig:
-            return None
-            
-        # Return genre from details JSON field if available
-        return gig.details.get('genre') if gig.details else None
+    likes = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Artist
         fields = [
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes'
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt',
+            'bannerImage', 'likes', 'performance_tier', 'is_verified'
         ]
-        extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
+        read_only_fields = fields
+    
+    def get_likes(self, obj):
+        return obj.likes.count()
 
 
-class ArtistAnalyticsSerializer(serializers.ModelSerializer):
+class ArtistListSerializer(BaseArtistSerializer):
+    """Lightweight serializer for listing artists with basic information."""
+    artistGenre = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta(BaseArtistSerializer.Meta):
+        fields = BaseArtistSerializer.Meta.fields + ['artistGenre']
+    
+    def get_artistGenre(self, obj):
+        # Cache the genre on the instance to avoid multiple queries
+        if not hasattr(obj, '_cached_genre'):
+            gig = Gig.objects.filter(collaborators=obj.user).first()
+            obj._cached_genre = gig.details.get('genre') if gig and gig.details else None
+        return obj._cached_genre
+
+
+class ArtistDetailSerializer(BaseArtistSerializer):
+    """Detailed serializer for artist profile with comprehensive information."""
+    artistGenre = serializers.SerializerMethodField(read_only=True)
+    social_links = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+    
+    class Meta(BaseArtistSerializer.Meta):
+        fields = BaseArtistSerializer.Meta.fields + [
+            'artistGenre', 'bio', 'social_links', 'stats',
+            'website', 'location', 'genres', 'influences'
+        ]
+    
+    def get_artistGenre(self, obj):
+        # More detailed genre handling for the detail view
+        gig = Gig.objects.filter(collaborators=obj.user).first()
+        if not gig:
+            return None
+        return gig.details.get('genre') if gig.details else None
+    
+    def get_social_links(self, obj):
+        return {
+            'facebook': obj.facebook_url,
+            'twitter': obj.twitter_handle,
+            'instagram': obj.instagram_handle,
+            'youtube': obj.youtube_channel,
+            'spotify': obj.spotify_uri,
+            'soundcloud': obj.soundcloud_username,
+            'apple_music': obj.apple_music_url
+        }
+    
+    def get_stats(self, obj):
+        return {
+            'total_gigs': Gig.objects.filter(collaborators=obj.user).count(),
+            'upcoming_gigs': Gig.objects.filter(
+                collaborators=obj.user,
+                event_date__gte=timezone.now()
+            ).count(),
+            'followers': obj.followers.count(),
+            'following': obj.user.following.count()
+        }
+
+
+class ArtistAnalyticsSerializer(BaseArtistSerializer):
     """
     Serializer for artist analytics data.
     Returns the four key metrics as percentages (0-100) with historical data.
@@ -42,8 +90,7 @@ class ArtistAnalyticsSerializer(serializers.ModelSerializer):
     current = serializers.SerializerMethodField()
     historical = serializers.SerializerMethodField()
 
-    class Meta:
-        model = Artist
+    class Meta(BaseArtistSerializer.Meta):
         fields = ['current', 'historical']
     
     def get_current(self, obj):
