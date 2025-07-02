@@ -13,9 +13,50 @@ class StripeConnectView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get_stripe_account_id(self, user):
-        """Get Stripe account ID from user's artist profile or settings."""
-        if hasattr(user, 'artist') and hasattr(user.artist, 'stripe_account_id'):
-            return user.artist.stripe_account_id
+        """Get Stripe account ID from user's artist or venue profile."""
+        logger.info(f"[Stripe] Looking up Stripe account for user {user.id} ({user.email})")
+        
+        # Check artist profile first
+        if hasattr(user, 'artist'):
+            artist = user.artist
+            logger.info(f"[Stripe] User has artist profile: {artist.id}")
+            
+            # Check if artist has stripe_account_id attribute
+            if not hasattr(artist, 'stripe_account_id'):
+                logger.warning(f"[Stripe] Artist profile {artist.id} has no stripe_account_id attribute")
+                return None
+                
+            logger.info(f"[Stripe] Artist {artist.id} has stripe_account_id: {artist.stripe_account_id}")
+            
+            if not artist.stripe_account_id:
+                logger.warning(f"[Stripe] Artist {artist.id} has empty stripe_account_id")
+                return None
+                
+            logger.info(f"[Stripe] Using artist's Stripe account ID: {artist.stripe_account_id}")
+            return artist.stripe_account_id
+        
+        logger.info(f"[Stripe] User {user.id} has no artist profile")
+            
+        # If no artist account, check venue profile
+        if hasattr(user, 'venue'):
+            venue = user.venue
+            logger.info(f"[Stripe] User has venue profile: {venue.id}")
+            
+            # Check if venue has stripe_account_id attribute
+            if not hasattr(venue, 'stripe_account_id'):
+                logger.warning(f"[Stripe] Venue profile {venue.id} has no stripe_account_id attribute")
+                return None
+                
+            logger.info(f"[Stripe] Venue {venue.id} has stripe_account_id: {venue.stripe_account_id}")
+            
+            if not venue.stripe_account_id:
+                logger.warning(f"[Stripe] Venue {venue.id} has empty stripe_account_id")
+                return None
+                
+            logger.info(f"[Stripe] Using venue's Stripe account ID: {venue.stripe_account_id}")
+            return venue.stripe_account_id
+        
+        logger.warning(f"[Stripe] User {user.id} has neither artist nor venue profile")
         return None
     
     def get_onboarding_link(self, stripe_account_id):
@@ -58,10 +99,29 @@ class AccountBalanceView(StripeConnectView):
 class TransactionHistoryView(StripeConnectView):
     def get(self, request):
         """Get transaction history."""
+        logger.info(f"[TransactionHistory] Fetching transaction history for user: {request.user.id} ({request.user.email})")
+        
+        # Log user attributes for debugging
+        logger.info(f"[TransactionHistory] User attributes: {dir(request.user)}")
+        
+        # Check if user has artist or venue profile
+        if hasattr(request.user, 'artist'):
+            logger.info(f"[TransactionHistory] User has artist profile: {request.user.artist.id}")
+            logger.info(f"[TransactionHistory] Artist stripe_account_id: {getattr(request.user.artist, 'stripe_account_id', 'Not set')}")
+        elif hasattr(request.user, 'venue'):
+            logger.info(f"[TransactionHistory] User has venue profile: {request.user.venue.id}")
+            logger.info(f"[TransactionHistory] Venue stripe_account_id: {getattr(request.user.venue, 'stripe_account_id', 'Not set')}")
+        else:
+            logger.warning("[TransactionHistory] User has neither artist nor venue profile")
+        
+        # Get Stripe account ID
         stripe_account_id = self.get_stripe_account_id(request.user)
+        logger.info(f"[TransactionHistory] Retrieved stripe_account_id: {stripe_account_id}")
+        
         if not stripe_account_id:
+            logger.warning(f"[TransactionHistory] No Stripe account found for user {request.user.id}")
             return Response(
-                {'detail': 'Stripe account not found'},
+                {'detail': 'Stripe account not found. Please complete the Stripe Connect onboarding process.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -171,21 +231,49 @@ class PayoutView(StripeConnectView):
 class OnboardingStatusView(StripeConnectView):
     def get(self, request):
         """Get account onboarding status and link if needed."""
+        logger.info(f"[OnboardingStatus] Getting status for user: {request.user.id} ({request.user.email})")
+        
+        # Log user attributes for debugging
+        logger.info(f"[OnboardingStatus] User attributes: {dir(request.user)}")
+        
+        # Check if user has artist or venue profile
+        if hasattr(request.user, 'artist'):
+            logger.info(f"[OnboardingStatus] User has artist profile: {request.user.artist.id}")
+            logger.info(f"[OnboardingStatus] Artist stripe_account_id: {getattr(request.user.artist, 'stripe_account_id', 'Not set')}")
+            logger.info(f"[OnboardingStatus] Artist stripe_onboarding_completed: {getattr(request.user.artist, 'stripe_onboarding_completed', 'Not set')}")
+        elif hasattr(request.user, 'venue'):
+            logger.info(f"[OnboardingStatus] User has venue profile: {request.user.venue.id}")
+            logger.info(f"[OnboardingStatus] Venue stripe_account_id: {getattr(request.user.venue, 'stripe_account_id', 'Not set')}")
+            logger.info(f"[OnboardingStatus] Venue stripe_onboarding_completed: {getattr(request.user.venue, 'stripe_onboarding_completed', 'Not set')}")
+        else:
+            logger.warning("[OnboardingStatus] User has neither artist nor venue profile")
+        
+        # Get Stripe account ID
         stripe_account_id = self.get_stripe_account_id(request.user)
+        logger.info(f"[OnboardingStatus] Retrieved stripe_account_id: {stripe_account_id}")
+        
         if not stripe_account_id:
+            logger.warning(f"[OnboardingStatus] No Stripe account found for user {request.user.id}")
             return Response(
                 {'detail': 'Stripe account not found'},
                 status=status.HTTP_400_BAD_REQUEST
             )
             
         try:
+            logger.info(f"[OnboardingStatus] Retrieving Stripe account: {stripe_account_id}")
             account = stripe.Account.retrieve(stripe_account_id)
+            
+            logger.info(f"[OnboardingStatus] Stripe account details: {account}")
+            
             response_data = {
                 'details_submitted': account.details_submitted,
                 'payouts_enabled': account.payouts_enabled,
                 'charges_enabled': account.charges_enabled,
-                'requirements': account.requirements,
+                'requirements': getattr(account, 'requirements', None),
             }
+            
+            logger.info(f"[OnboardingStatus] Account status - Details submitted: {account.details_submitted}, "
+                      f"Payouts enabled: {account.payouts_enabled}, Charges enabled: {account.charges_enabled}")
             
             if not account.details_submitted:
                 onboarding_link = self.get_onboarding_link(stripe_account_id)
