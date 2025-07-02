@@ -248,3 +248,19 @@ def reset_password(request):
         return Response({"message": "Password reset successful"}, status=status.HTTP_200_OK)
     except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         return Response({"detail": "Invalid user"}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    user = request.user
+    password = request.data.get('password')
+
+    if not password:
+        return Response({"detail": "Password is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Re-authenticate the user
+    if not user.check_password(password):
+        return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.delete()
+    return Response({"detail": "Account deleted successfully."}, status=status.HTTP_200_OK)

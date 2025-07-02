@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    delete_account,
     signup, 
     verify_otp, 
     resend_otp, 
@@ -19,4 +20,5 @@ urlpatterns = [
     path('forgot-password/', forgot_password, name='forgot_password'),
     path('change-password/', change_password, name='change_password'),
     path('reset-password/', reset_password, name='reset_password'),
+    path('delete-account/', delete_account, name='delete_account'),
 ]
