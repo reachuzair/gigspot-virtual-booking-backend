@@ -200,6 +200,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_image = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
         fields = [
@@ -211,7 +213,13 @@ class UserSerializer(serializers.ModelSerializer):
             'is_active',
             'created_at',
             'updated_at',
+            'profile_image',
         ]
+        
+    def get_profile_image(self, obj):
+        if obj.profileImage:
+            return obj.profileImage.url
+        return None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

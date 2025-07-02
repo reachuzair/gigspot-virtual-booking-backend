@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from .stripe_client import stripe
 from .models import Payment, PaymentStatus
+from .helpers import handle_account_update
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ def stripe_webhook(request):
             handle_payment_failure(event['data']['object'])
         elif event_type in ['charge.succeeded', 'charge.failed']:
             handle_charge_event(event['data']['object'])
+        elif event_type == 'account.updated':
+            handle_account_update(event['data']['object'])
         else:
             logger.info(f'Unhandled event type: {event_type}')
             
@@ -96,10 +99,21 @@ def handle_payment_success(payment_intent):
         payment_intent_id = payment_intent.get('id')
         amount = payment_intent.get('amount')
         currency = payment_intent.get('currency')
+        metadata = payment_intent.get('metadata', {})
+        
+        logger.info(f'Handling successful payment for intent: {payment_intent_id}')
+        logger.info(f'Payment metadata: {metadata}')
+        
+        # Check if this is a ticket purchase
+        if metadata.get('payment_intent_for') == 'ticket_purchase':
+            logger.info('Processing ticket purchase payment')
+            from .helpers import handle_payment_intent_succeeded
+            handle_payment_intent_succeeded(payment_intent)
+            logger.info('Successfully processed ticket purchase')
         
         # Update payment status in database
         try:
-            payment = Payment.objects.get(reference_id=payment_intent_id)
+            payment = Payment.objects.get(payment_intent_id=payment_intent_id)
             payment.status = PaymentStatus.COMPLETED
             payment.save(update_fields=['status', 'updated_at'])
             

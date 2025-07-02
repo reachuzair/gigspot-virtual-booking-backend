@@ -26,6 +26,7 @@ def user_profile(request):
             'id': user.id,
             'email': user.email,
             'role': user.role,
+            'name': user.name,
             "profileImage": user.profileImage.url if user.profileImage else None
         }
 
@@ -230,7 +231,7 @@ def update_artist_soundcharts_uuid(request):
             )
         
         # Update the SoundCharts UUID and metrics using our utility function
-        from custom_auth.soundcharts_utils import update_artist_soundcharts_uuid as update_uuid
+        from artists.soundcharts_utils import update_artist_soundcharts_uuid as update_uuid
         
         result = update_uuid(artist, soundcharts_uuid, force_update=True)
         
@@ -276,7 +277,7 @@ def get_artist_metrics(request):
         artist = Artist.objects.get(user=user)
         
         # Check if we need to update metrics (if they're stale or forced)
-        from custom_auth.soundcharts_utils import update_artist_metrics_from_soundcharts
+        from artists.soundcharts_utils import update_artist_metrics_from_soundcharts
         
         # Only update if data is stale (older than 24 hours)
         force_update = request.query_params.get('force_update', '').lower() == 'true'

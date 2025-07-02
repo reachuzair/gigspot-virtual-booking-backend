@@ -6,9 +6,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 import django_filters
 from django.db.models import Count, F, ExpressionWrapper, fields, Q, Sum, Case, When, IntegerField
-from django.db.models.functions import TruncDate, TruncMonth
+from django.db.models.functions import TruncDate, TruncMonth, TruncDay
 from django.utils import timezone
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
 from custom_auth.models import Venue, User
 from users.serializers import VenueProfileSerializer
@@ -194,50 +194,76 @@ class VenueAnalyticsView(APIView):
 
             # Add change percentage for the most recent show to summary
             latest_show_change = shows_data[-1]['sales_change_pct'] if len(shows_data) > 1 and 'sales_change_pct' in shows_data[-1] else None
-
-            return Response({
-                'summary': {
-                    'total_shows': num_shows,
-                    'total_tickets_sold': total_tickets_sold,
-                    'total_revenue': total_revenue,
-                    'average_attendance': round(avg_attendance, 1) if num_shows > 0 else 0,
-                    'latest_sales_change': latest_show_change if num_shows > 1 else None
-                },
-                'charts': {
-                    'sales_trend': {
-                        'labels': [item['date'] for item in sales_trend],
-                        'datasets': [
-                            {
-                                'label': 'Tickets Sold',
-                                'data': [item['tickets_sold'] for item in sales_trend],
-                                'borderColor': '#4F46E5',  # indigo-600
-                                'tension': 0.1
-                            },
-                            {
-                                'label': 'Revenue',
-                                'data': [item['revenue'] for item in sales_trend],
-                                'borderColor': '#10B981',  # emerald-500
-                                'tension': 0.1,
-                                'yAxisID': 'y1'
-                            }
-                        ]
-                    },
-                    'top_shows': [
-                        {
-                            'title': show['title'],
-                            'date': show['event_date'].strftime('%b %d, %Y'),
-                            'tickets_sold': show['tickets_sold'],
-                            'revenue': float(show['revenue'])
-                        } for show in top_shows
-                    ]
-                },
-                'recent_shows': shows_data[-3:],  # Last 3 shows for the recent activity
-                'metrics': {
-                    'occupancy_rate': round((total_attendance / (sum(gig.max_tickets or 0 for gig in completed_gigs) or 1)) * 100, 1) if completed_gigs else 0,
-                    'avg_ticket_price': avg_ticket_price,
-                    'revenue_per_show': round(total_revenue / num_shows, 2) if num_shows > 0 else 0,
-                    'tickets_per_show': round(total_tickets_sold / num_shows, 1) if num_shows > 0 else 0
+            
+            # Get current year
+            current_year = timezone.now().year
+            
+            # Create a list of all months in the current year with timezone awareness
+            all_months = [
+                timezone.make_aware(datetime(current_year, month, 1))
+                for month in range(1, 13)
+            ]
+            
+            # Get all ticket sales for the current year, grouped by month
+            monthly_sales = Ticket.objects.filter(
+                gig__venue=venue,
+                created_at__year=current_year
+            ).annotate(
+                month=TruncMonth('created_at')
+            ).values('month').annotate(
+                tickets_sold=Count('id'),
+                revenue=Sum('gig__ticket_price')
+            ).order_by('month')
+            
+            # Convert to a dictionary for easier lookup
+            sales_by_month = {}
+            for sale in monthly_sales:
+                # Keep the timezone-aware datetime for comparison
+                month_date = sale['month']
+                sales_by_month[month_date] = {
+                    'tickets_sold': sale['tickets_sold'],
+                    'revenue': float(sale['revenue'] or 0)
                 }
+            
+            # Debug info
+            print("\n--- DEBUG: Monthly Sales Data ---")
+            print(f"Venue ID: {venue.id}")
+            print(f"Current Year: {current_year}")
+            print(f"Found {len(sales_by_month)} months with data")
+            for month, data in sales_by_month.items():
+                print(f"  - {month.strftime('%b %Y')}: {data['tickets_sold']} tickets, ${data['revenue']}")
+            print("--- END DEBUG ---\n")
+            
+            # Initialize monthly sales data with all months
+            monthly_sales_data = []
+            previous_month_tickets = 0
+            
+            for i, month_start in enumerate(all_months):
+                # Get sales data for this month or use zeros if no data
+                month_data = sales_by_month.get(month_start, {'tickets_sold': 0, 'revenue': 0})
+                tickets_sold = month_data['tickets_sold']
+                revenue = month_data['revenue']
+                
+                # Calculate percentage change from previous month
+                if i > 0 and previous_month_tickets > 0 and tickets_sold > 0:
+                    change_pct = ((tickets_sold - previous_month_tickets) / previous_month_tickets) * 100
+                else:
+                    change_pct = 0.0
+                
+                monthly_sales_data.append({
+                    'month': month_start.strftime('%b %Y'),
+                    'tickets_sold': tickets_sold,
+                    'revenue': float(revenue) if revenue else 0.0,
+                    'percentage_change': round(change_pct, 2)
+                })
+                
+                # Only update previous_month_tickets if we have data for this month
+                if tickets_sold > 0:
+                    previous_month_tickets = tickets_sold
+
+            # Return only the monthly sales data
+            return Response({
+                'monthly_sales': monthly_sales_data
             })
 
         except Venue.DoesNotExist:
