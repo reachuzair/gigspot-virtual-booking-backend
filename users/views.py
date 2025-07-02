@@ -26,6 +26,7 @@ def user_profile(request):
             'id': user.id,
             'email': user.email,
             'role': user.role,
+            'name': user.name,
             "profileImage": user.profileImage.url if user.profileImage else None
         }
 
