@@ -158,10 +158,10 @@ def resend_otp(request, email):
 @permission_classes([AllowAny])
 def login_view(request):
     try:
-        email = request.data.get('email')
+        email = request.data.get('email', '').strip().lower()
         password = request.data.get('password')
 
-        user = User.objects.filter(email=email).first()
+        user = User.objects.filter(email__iexact=email).first()
         if not user:
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -170,11 +170,17 @@ def login_view(request):
 
         if not user.email_verified:
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
+
         if not hasattr(user, 'backend') or user.backend is None:
             user.backend = ModelBackend.__module__ + '.' + ModelBackend.__name__
+
         login(request, user)
 
-        return Response({"detail": "Login successful", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
+        return Response({
+            "detail": "Login successful",
+            "user": UserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
