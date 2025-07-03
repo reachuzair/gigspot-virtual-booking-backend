@@ -194,7 +194,7 @@ class GigDetailView(APIView):
     """
     Retrieve a gig by ID with detailed information
     """
-    permission_classes = []  # Handle authentication in the method
+    permission_classes = []  # Handle authentication manually
 
     def get(self, request, id):
         user = request.user if request.user.is_authenticated else None
@@ -238,8 +238,9 @@ class GigDetailView(APIView):
 
         # Check user role-based visibility
         if hasattr(user, 'artist'):
-            # Artists can see their collaborations, venue gigs, or public artist gigs
+            # Artists can see their collaborations, their own gigs, venue gigs, or public artist gigs
             return (
+                gig.created_by == user or
                 user in gig.collaborators.all() or
                 gig.gig_type == GigType.VENUE_GIG or
                 (gig.gig_type == GigType.ARTIST_GIG and gig.is_public)
@@ -1714,5 +1715,46 @@ def pending_venue_gigs(request):
     return Response({
         "count": pending_gigs.count(),
         "pending_gigs": serializer.data
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_collab_payment_share(request, contract_id):
+    user = request.user
+
+    # Get artist profile
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist profile not found'}, status=404)
+
+    # Get contract
+    try:
+        contract = Contract.objects.get(id=contract_id)
+    except Contract.DoesNotExist:
+        return Response({'detail': 'Contract not found'}, status=404)
+
+    # Collaborators
+    collaborators = list(contract.gig.collaborators.all())
+
+    # Optional: Add user if not yet a collaborator (preview purposes)
+    if user not in collaborators:
+        collaborators.append(user)
+
+    total_artists = len(collaborators)
+
+    if total_artists == 0:
+        return Response({'detail': 'No collaborators found'}, status=400)
+
+    # Calculate per artist share (based on contract price/application fee)
+    total_fee = contract.price * 100  # in cents
+    per_artist_share = total_fee // total_artists
+
+    return Response({
+        "contract_id": contract.id,
+        "total_fee": total_fee,
+        "total_artists": total_artists,
+        "per_artist_share": per_artist_share,
+        "currency": "usd"
     })
 

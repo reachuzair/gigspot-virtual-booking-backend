@@ -16,7 +16,7 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = ['id', 'name', 'location', 'address',
-                  'capacity', 'artist_capacity', 'city']
+                  'capacity', 'artist_capacity', 'city','logo']
 
     def get_name(self, obj):
         return obj.user.name if obj.user else None

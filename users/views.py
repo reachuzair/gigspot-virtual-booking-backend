@@ -359,3 +359,33 @@ def update_profile(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_venues_and_artists(request):
+    """
+    Get all venues and artists with their basic profile information.
+    """
+    try:
+        venues = Venue.objects.all()
+        artists = Artist.objects.all()
+
+        # Serialize separately
+        venue_serializer = VenueProfileSerializer(venues, many=True, context={'request': request})
+        artist_serializer = ArtistProfileSerializer(artists, many=True, context={'request': request})
+
+        # Add a 'type' field to distinguish each item
+        venues_data = [{**item, 'type': 'venue'} for item in venue_serializer.data]
+        artists_data = [{**item, 'type': 'artist'} for item in artist_serializer.data]
+
+        # Combine both lists
+        combined = venues_data + artists_data
+
+        # Optional: sort alphabetically or by ID, etc.
+        # combined.sort(key=lambda x: x.get('name', ''))
+
+        return Response(combined, status=status.HTTP_200_OK)
+
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
