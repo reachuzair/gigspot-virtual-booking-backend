@@ -267,28 +267,27 @@ class ComposeEmailView(generics.CreateAPIView):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        # Handle file uploads - support both 'files[]' and 'files' field names
+        # Make a mutable copy of request.data
+        mutable_data = request.data.copy()
+
+        # Handle file uploads - support both 'files[]' and 'files'
         files = request.FILES.getlist('files[]', []) or request.FILES.getlist('files', [])
         if files:
-            # Create a mutable copy of request.data
-            mutable_data = request.data.copy()
-            # Set the files in the mutable data
             mutable_data.setlist('uploaded_files', files)
-            # Update the request._full_data with the modified data
-            request._full_data = mutable_data
 
-        # Check if this is a draft or send action
-        is_draft = request.data.get('is_draft', 'false').lower() == 'true'
-        
-        # For drafts, we don't require a recipient
-        if not is_draft and not request.data.get('to_recipients'):
+        # Determine if it's a draft
+        is_draft = mutable_data.get('is_draft', 'false').lower() == 'true'
+
+        # For drafts, we don’t require a recipient
+        if not is_draft and not mutable_data.get('to_recipients'):
             return Response(
-                {'error': 'Recipient is required to send an email'}, 
+                {'error': 'Recipient is required to send an email'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Check if this is a reply
-        parent_id = request.data.get('parent_id')
+        parent_id = mutable_data.get('parent_id')
+        thread = None
         if parent_id:
             parent = get_object_or_404(
                 EmailMessage.objects.filter(
@@ -296,60 +295,65 @@ class ComposeEmailView(generics.CreateAPIView):
                 ),
                 pk=parent_id
             )
-            request.data['thread'] = parent.thread_id
-            request.data['parent'] = parent_id
+            mutable_data['thread'] = parent.thread_id
+            mutable_data['parent'] = parent_id
             thread = parent.thread
         else:
             # Create a new thread for non-drafts or drafts with a subject
-            if not is_draft or request.data.get('subject'):
+            if not is_draft or mutable_data.get('subject'):
                 thread = EmailThread.objects.create(
-                    subject=request.data.get('subject', 'No Subject')
+                    subject=mutable_data.get('subject', 'No Subject')
                 )
-                request.data['thread'] = thread.id
+                mutable_data['thread'] = thread.id
             else:
                 return Response(
-                    {'error': 'Subject is required for drafts'}, 
+                    {'error': 'Subject is required for drafts'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # Ensure we're working with a single recipient
-        if 'to_recipients' in request.data and isinstance(request.data['to_recipients'], list):
-            request.data['to_recipients'] = request.data['to_recipients'][0] if request.data['to_recipients'] else None
-        
-        # Add admin to CC only when sending (not for drafts)
+        # Normalize recipient fields
+        to_recipients = request.data.getlist('to_recipients')
+        if to_recipients:
+            mutable_data.setlist('to_recipients', to_recipients)
+
+        # Handle cc_recipients
+        cc_recipients = request.data.getlist('cc_recipients')
+        cc_ids = []
+        for val in cc_recipients:
+            try:
+                cc_ids.append(int(val))
+            except (TypeError, ValueError):
+                continue
+
+        # Add admin to CC if sending
         if not is_draft:
             admin_user = User.objects.filter(is_superuser=True).first()
-            if admin_user:
-                if 'cc_recipients' not in request.data:
-                    request.data['cc_recipients'] = [admin_user.id]
-                elif isinstance(request.data['cc_recipients'], list) and admin_user.id not in request.data['cc_recipients']:
-                    request.data['cc_recipients'].append(admin_user.id)
-                elif not isinstance(request.data['cc_recipients'], list):
-                    request.data['cc_recipients'] = [request.data['cc_recipients'], admin_user.id]
+            if admin_user and admin_user.id not in cc_ids:
+                cc_ids.append(admin_user.id)
 
-        # Set is_draft flag
-        request.data['is_draft'] = is_draft
+        mutable_data.setlist('cc_recipients', [str(uid) for uid in cc_ids])
 
-        serializer = self.get_serializer(data=request.data)
+        # Set is_draft flag properly
+        mutable_data['is_draft'] = str(is_draft).lower()
+
+        # Serialize and save
+        serializer = self.get_serializer(data=mutable_data)
         serializer.is_valid(raise_exception=True)
-        
-        # Save the email message
         email_message = serializer.save()
-        
-        if 'thread' in locals() and thread:
-            # Update thread updated_at
+
+        # Update thread
+        if thread:
             thread.updated_at = timezone.now()
             thread.save(update_fields=['updated_at'])
 
-            # For sent emails, update thread participants
+            # Add participants if sent
             if not is_draft:
-                # Add all participants to the thread
                 participants = {request.user}
                 if email_message.to_recipients.exists():
-                    participants.add(email_message.to_recipients.first())
-                if admin_user:
-                    participants.add(admin_user)
-                
+                    participants.update(email_message.to_recipients.all())
+                if email_message.cc_recipients.exists():
+                    participants.update(email_message.cc_recipients.all())
+
                 for user in participants:
                     EmailThreadParticipant.objects.get_or_create(
                         thread=thread,
@@ -360,12 +364,10 @@ class ComposeEmailView(generics.CreateAPIView):
                         }
                     )
 
-                # Send email notification asynchronously
-                # from django_rq import enqueue
-                # enqueue(send_email_notification, email_message)
-
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
 
 class EmailMessageDetailView(generics.RetrieveUpdateDestroyAPIView):
     """

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (update_profile, update_user_profile, user_profile, 
+from .views import (get_venues_and_artists, update_profile, update_user_profile, user_profile, 
                      update_profile_image, update_notification_settings, 
                      update_artist_soundcharts_uuid, get_artist_metrics)
 
@@ -12,5 +12,6 @@ urlpatterns = [
          name='update_artist_soundcharts_uuid'),
     path('profile/update/', update_profile, name='update-user-profile'),
     path('artist/metrics/', get_artist_metrics, name='get_artist_metrics'),
+    path('mailto',get_venues_and_artists, name='get_venues_and_artists'),
 
 ]

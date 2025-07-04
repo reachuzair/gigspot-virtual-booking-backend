@@ -194,7 +194,7 @@ class GigDetailView(APIView):
     """
     Retrieve a gig by ID with detailed information
     """
-    permission_classes = []  # Handle authentication in the method
+    permission_classes = []  # Handle authentication manually
 
     def get(self, request, id):
         user = request.user if request.user.is_authenticated else None
@@ -238,8 +238,9 @@ class GigDetailView(APIView):
 
         # Check user role-based visibility
         if hasattr(user, 'artist'):
-            # Artists can see their collaborations, venue gigs, or public artist gigs
+            # Artists can see their collaborations, their own gigs, venue gigs, or public artist gigs
             return (
+                gig.created_by == user or
                 user in gig.collaborators.all() or
                 gig.gig_type == GigType.VENUE_GIG or
                 (gig.gig_type == GigType.ARTIST_GIG and gig.is_public)
@@ -1716,3 +1717,46 @@ def pending_venue_gigs(request):
         "pending_gigs": serializer.data
     })
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_collab_payment_share(request, gig_id):
+    user = request.user
+
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist profile not found'}, status=404)
+
+    try:
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=404)
+
+    # Get the artist's contract for this gig
+    contract = Contract.objects.filter(artist=artist, gig=gig).order_by('-created_at').first()
+    if not contract:
+        return Response({'detail': 'No contract found for this gig'}, status=404)
+
+    collaborators = list(gig.collaborators.all())
+
+    if user not in collaborators:
+        collaborators.append(user)
+
+    total_artists = len(collaborators)
+    if total_artists == 0:
+        return Response({'detail': 'No collaborators found'}, status=400)
+    if not gig.is_public and not gig.invitees.filter(id=user.id).exists():
+        return Response({'detail': 'Access denied. You are not invited to this private gig.'}, status=403)
+
+
+    total_fee = gig.venue_fee * 100  # in cents
+    per_artist_share = total_fee // total_artists
+
+    return Response({
+        "contract_id": contract.id,
+        "gig_id": gig.id,
+        "total_fee": total_fee,
+        "total_artists": total_artists,
+        "per_artist_share": per_artist_share,
+        "currency": "usd"
+    })
