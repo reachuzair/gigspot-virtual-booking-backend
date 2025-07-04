@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    GigByCityView, artist_event_history, get_collab_payment_share, get_contract_by_gig, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
+    GigByCityView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_user_gigs, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
@@ -57,11 +57,12 @@ gig_urls = [
     
     # Gig filtering and requests
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
-    path('requests/submitted/', submitted_requests, name='submitted-requests'),
+    path('requests/invite-list/', submitted_requests, name='submitted-requests'),
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='signed-events'),
     path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),
      path('<int:gig_id>/collab-share/', get_collab_payment_share, name='get-collab-payment-share'),
+     path('Myrequests/', get_user_gigs, name='my_requests'),
 ]
 
 # Tour URL patterns

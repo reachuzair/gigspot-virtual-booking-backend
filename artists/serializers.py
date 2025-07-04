@@ -64,53 +64,48 @@ class ArtistAnalyticsSerializer(serializers.ModelSerializer):
     
     def get_historical(self, obj):
         """Get historical monthly metrics for the past 12 months"""
-        # Calculate date range
         end_date = timezone.now().replace(day=1)
         start_date = (end_date - timedelta(days=365)).replace(day=1)
-        
-        # Get all metrics for this date range
+
         metrics = ArtistMonthlyMetrics.objects.filter(
             artist=obj,
             month__gte=start_date,
             month__lte=end_date
         ).order_by('month')
-        
-        # Create a list of all months in the range
+
         months = []
         current = start_date
         while current <= end_date:
             months.append(current)
-            # Move to first day of next month
             if current.month == 12:
                 current = current.replace(year=current.year + 1, month=1, day=1)
             else:
                 current = current.replace(month=current.month + 1, day=1)
-        
-        # Create a dict of month -> metrics for easy lookup
+
         metrics_dict = {m.month.strftime('%Y-%m-01'): m for m in metrics}
-        
-        # Build the historical data array
+
         historical_data = []
         for month in months:
             month_key = month.strftime('%Y-%m-01')
+            label = month.strftime('%B %Y')  # e.g., "July 2024"
+
             if month_key in metrics_dict:
                 m = metrics_dict[month_key]
                 historical_data.append({
-                    'month': month.strftime('%Y-%m'),
+                    'month': label,
                     'fan_engagement': round(float(m.fan_engagement_pct or 0), 1),
                     'social_following': round(float(m.social_following_pct or 0), 1),
                     'playlist_views': round(float(m.playlist_views_pct or 0), 1),
                     'buzz_score': round(float(m.buzz_score_pct or 0), 1)
                 })
             else:
-                # If no data for this month, use zeros or previous value
                 prev_value = historical_data[-1] if historical_data else None
                 historical_data.append({
-                    'month': month.strftime('%Y-%m'),
+                    'month': label,
                     'fan_engagement': prev_value['fan_engagement'] if prev_value else 0,
                     'social_following': prev_value['social_following'] if prev_value else 0,
                     'playlist_views': prev_value['playlist_views'] if prev_value else 0,
                     'buzz_score': prev_value['buzz_score'] if prev_value else 0
                 })
-        
+
         return historical_data

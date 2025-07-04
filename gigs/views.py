@@ -1273,95 +1273,45 @@ def validate_ticket_price(request):
 
 class TourVenueSuggestionsAPI(APIView):
     """
-    API for managing venue suggestions for a tour.
+    Suggest venues based on cities from already suggested venues in a tour.
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, tour_id):
-        """
-        Get venue suggestions for a tour based on criteria.
-        
-        Expected POST data:
-        {
-            "cities": ["New York", "Boston"],
-            "min_capacity": 100,  # optional
-            "max_capacity": 1000,  # optional
-            "venue_types": ["bar", "club"]  # optional
-        }
-        """
+    def get(self, request, tour_id):
+        user = request.user
+        tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
 
-        try:
-            # Debug logging
-            logger.info(f"Looking for tour_id={tour_id} for user={request.user.id} ({request.user.email})")
-            
-            # Get the tour and verify ownership
-            try:
-                tour = Tour.objects.get(id=tour_id, artist__user=request.user)
-                logger.info(f"Found tour: {tour.id} - {tour.title}")
-            except Tour.DoesNotExist:
-                logger.error(f"Tour not found or access denied. Tour ID: {tour_id}, User ID: {request.user.id}")
-                logger.error(f"Available tours for user: {list(Tour.objects.filter(artist__user=request.user).values_list('id', flat=True))}")
-                return Response(
-                    {"error": "Tour not found or you don't have permission to access it"}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Get filter parameters
-            cities = request.data.get('cities', [])
-            min_capacity = request.data.get('min_capacity')
-            max_capacity = request.data.get('max_capacity')
-            venue_types = request.data.get('venue_types', [])
-            
-            if not cities:
-                return Response(
-                    {"error": "At least one city is required"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Start with completed venues (assuming is_completed=True means venue is active/ready)
-            venues = Venue.objects.filter(is_completed=True)
-            logger.info(f"Found {venues.count()} completed venues")
-            
-            # Filter by cities in location field
-            city_filters = Q()
-            for city in cities:
-                city_filters |= Q(location__icontains=city.lower())
-            
-            if city_filters:
-                venues = venues.filter(city_filters)
-                logger.info(f"After city filter: {venues.count()} venues")
-            
-            # Apply additional filters if provided
-            if min_capacity is not None:
-                venues = venues.filter(capacity__gte=min_capacity)
-            if max_capacity is not None:
-                venues = venues.filter(capacity__lte=max_capacity)
-            # Note: venue_type filter is removed as it's not available in the Venue model
-            
-            # Create or update suggestions for these venues
-            suggestions = []
-            for venue in venues:
-                suggestion, _ = TourVenueSuggestion.objects.get_or_create(
-                    tour=tour,
-                    venue=venue,
-                    defaults={'event_date': timezone.now().date()}
-                )
-                suggestions.append(suggestion)
-            
-            # Serialize the response
-            serializer = TourVenueSuggestionSerializer(suggestions, many=True)
-            return Response({
-                "count": len(suggestions),
-                "results": serializer.data
-            })
-            
-        except Exception as e:
-            logger.error(f"Error in suggest_venues: {str(e)}", exc_info=True)
+        # Optional filters
+        min_capacity = request.query_params.get('min_capacity')
+        max_capacity = request.query_params.get('max_capacity')
+
+        # Step 1: Get cities from previously suggested venues
+        existing_suggestions = TourVenueSuggestion.objects.filter(tour=tour).select_related('venue')
+        cities = list({
+            suggestion.venue.city
+            for suggestion in existing_suggestions
+            if suggestion.venue and suggestion.venue.city
+        })
+
+        if not cities:
             return Response(
-
-                {"error": "An error occurred while processing your request"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "No cities found from previous suggestions."},
+                status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Step 2: Get venues in those cities
+        venues = Venue.objects.filter(is_completed=True, city__in=cities)
+
+        if min_capacity:
+            venues = venues.filter(capacity__gte=min_capacity)
+        if max_capacity:
+            venues = venues.filter(capacity__lte=max_capacity)
+
+        serializer = TourVenueSuggestionSerializer(venues, many=True, context={'request': request})
+        return Response({
+            "count": venues.count(),
+            "results": serializer.data
+        })
 
 
 class TourViewSet(viewsets.ModelViewSet):
@@ -1573,6 +1523,8 @@ def submitted_requests(request):
             'gig_title': invite.gig.title,
             'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
             'artist': invite.artist_received.user.name,
+            'artist_id': invite.artist_received.id,
+            'price': invite.gig.venue_fee if venue else invite.gig.ticket_price,
             'status': invite.status,
             'sent_at': invite.created_at,
             'address': invite.gig.venue.address if invite.gig.venue else None,
@@ -1749,7 +1701,7 @@ def get_collab_payment_share(request, gig_id):
         return Response({'detail': 'Access denied. You are not invited to this private gig.'}, status=403)
 
 
-    total_fee = gig.venue_fee * 100  # in cents
+    total_fee = gig.venue_fee # in cents
     per_artist_share = total_fee // total_artists
 
     return Response({
@@ -1759,4 +1711,26 @@ def get_collab_payment_share(request, gig_id):
         "total_artists": total_artists,
         "per_artist_share": per_artist_share,
         "currency": "usd"
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_gigs(request):
+    """
+    Get all gigs created by the artist (not including collaborations).
+    """
+    user = request.user
+
+    if not hasattr(user, 'artist_profile'):
+        return Response({'detail': 'Only artists can view their gigs.'}, status=403)
+
+    gigs = Gig.objects.filter(
+        created_by=user
+    ).order_by('-created_at')
+
+    serializer = GigSerializer(gigs, many=True, context={'request': request})
+
+    return Response({
+        "count": gigs.count(),
+        "gigs": serializer.data
     })

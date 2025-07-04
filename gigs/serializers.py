@@ -80,6 +80,7 @@ class GigSerializer(serializers.ModelSerializer):
     is_part_of_tour = serializers.BooleanField(read_only=True)
     tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
     tour_order = serializers.IntegerField(required=False, allow_null=True)
+    venue=VenueSerializer()
     
 
     class Meta:
