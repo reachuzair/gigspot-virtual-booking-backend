@@ -1676,7 +1676,7 @@ def signed_events(request, contract_id=None):
 @permission_classes([IsAuthenticated])
 def artist_event_history(request):
     user = request.user
-    if not hasattr(user, 'artist'):
+    if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can access event history.'}, status=403)
 
     artist_user = user
