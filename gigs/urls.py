@@ -61,7 +61,7 @@ gig_urls = [
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='signed-events'),
     path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),
-     path('<int:contract_id>/collab-share/', get_collab_payment_share, name='get-collab-payment-share'),
+     path('<int:gig_id>/collab-share/', get_collab_payment_share, name='get-collab-payment-share'),
 ]
 
 # Tour URL patterns

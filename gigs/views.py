@@ -1719,42 +1719,44 @@ def pending_venue_gigs(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_collab_payment_share(request, contract_id):
+def get_collab_payment_share(request, gig_id):
     user = request.user
 
-    # Get artist profile
     try:
         artist = Artist.objects.get(user=user)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist profile not found'}, status=404)
 
-    # Get contract
     try:
-        contract = Contract.objects.get(id=contract_id)
-    except Contract.DoesNotExist:
-        return Response({'detail': 'Contract not found'}, status=404)
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=404)
 
-    # Collaborators
-    collaborators = list(contract.gig.collaborators.all())
+    # Get the artist's contract for this gig
+    contract = Contract.objects.filter(artist=artist, gig=gig).order_by('-created_at').first()
+    if not contract:
+        return Response({'detail': 'No contract found for this gig'}, status=404)
 
-    # Optional: Add user if not yet a collaborator (preview purposes)
+    collaborators = list(gig.collaborators.all())
+
     if user not in collaborators:
         collaborators.append(user)
 
     total_artists = len(collaborators)
-
     if total_artists == 0:
         return Response({'detail': 'No collaborators found'}, status=400)
+    if not gig.is_public and not gig.invitees.filter(id=user.id).exists():
+        return Response({'detail': 'Access denied. You are not invited to this private gig.'}, status=403)
 
-    # Calculate per artist share (based on contract price/application fee)
-    total_fee = contract.price * 100  # in cents
+
+    total_fee = gig.venue_fee * 100  # in cents
     per_artist_share = total_fee // total_artists
 
     return Response({
         "contract_id": contract.id,
+        "gig_id": gig.id,
         "total_fee": total_fee,
         "total_artists": total_artists,
         "per_artist_share": per_artist_share,
         "currency": "usd"
     })
-
