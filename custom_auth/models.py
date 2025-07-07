@@ -1531,7 +1531,7 @@ class Artist(models.Model):
 
 class Venue(models.Model):
     id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='venue_profile')
     verification_docs = models.FileField(
                 upload_to='venue_verification_docs', blank=True, null=True)
     location = models.JSONField(default=list)

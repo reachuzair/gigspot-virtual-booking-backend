@@ -250,7 +250,7 @@ class VenueSubscription(models.Model):
     ]
     
     venue = models.ForeignKey('custom_auth.Venue', on_delete=models.CASCADE, related_name='ad_subscriptions')
-    plan = models.ForeignKey(VenueAdPlan, on_delete=models.PROTECT)
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT)
     
     # Stripe fields
     stripe_customer_id = models.CharField(max_length=100)
@@ -313,6 +313,11 @@ class ArtistSubscription(models.Model):
     def __str__(self):
         return f"{self.artist.user.name} - {self.plan}"
 
+    def can_create_tour(self):
+        return (
+            self.status == SubscriptionStatus.ACTIVE and
+            self.plan and self.plan.subscription_tier == 'PREMIUM'
+        )
     def update_from_stripe(self):
         """Sync with Stripe subscription data"""
         try:

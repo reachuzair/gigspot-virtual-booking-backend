@@ -1159,6 +1159,7 @@ def sign_contract(request, contract_id):
                     contract.venue.stripe_account_id if total_artists == 1 else
                     collaborators[0].stripe_account_id
                 )
+
             },
             metadata={
                 "contract_id": contract.id,
@@ -1176,6 +1177,7 @@ def sign_contract(request, contract_id):
         })
 
     return Response({'detail': 'Contract signed successfully'}, status=200)
+
 
 
 @api_view(['POST'])
@@ -1685,9 +1687,9 @@ def get_collab_payment_share(request, gig_id):
         return Response({'detail': 'Gig not found'}, status=404)
 
     # Get the artist's contract for this gig
-    contract = Contract.objects.filter(artist=artist, gig=gig).order_by('-created_at').first()
-    if not contract:
-        return Response({'detail': 'No contract found for this gig'}, status=404)
+    # contract = Contract.objects.filter(artist=artist, gig=gig).order_by('-created_at').first()
+    # if not contract:
+    #     return Response({'detail': 'No contract found for this gig'}, status=404)
 
     collaborators = list(gig.collaborators.all())
 
@@ -1705,7 +1707,7 @@ def get_collab_payment_share(request, gig_id):
     per_artist_share = total_fee // total_artists
 
     return Response({
-        "contract_id": contract.id,
+        # "contract_id": contract.id,
         "gig_id": gig.id,
         "total_fee": total_fee,
         "total_artists": total_artists,
@@ -1734,3 +1736,7 @@ def get_user_gigs(request):
         "count": gigs.count(),
         "gigs": serializer.data
     })
+
+
+
+
