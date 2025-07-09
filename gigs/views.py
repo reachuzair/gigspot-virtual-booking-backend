@@ -2,6 +2,7 @@ from asyncio.log import logger
 from datetime import timedelta
 import stripe
 from rest_framework import serializers
+from custom_auth.serializers import VenueSerializer
 from gigspot_backend import settings
 from .models import Gig, Status, GigType
 import io
@@ -467,6 +468,7 @@ def send_invite_request(request, id):
     try:
         artist = Artist.objects.get(id=artist)
         gig_invite = GigInvite.objects.create(
+            status=GigInviteStatus.PENDING,
             gig=gig, user=user, artist_received=artist)
         gig_invite.save()
     except Exception as e:
@@ -1279,6 +1281,8 @@ class TourVenueSuggestionsAPI(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    
+
     def get(self, request, tour_id):
         user = request.user
         tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
@@ -1296,10 +1300,11 @@ class TourVenueSuggestionsAPI(APIView):
         })
 
         if not cities:
-            return Response(
-                {"error": "No cities found from previous suggestions."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            cities = tour.selected_cities or []
+            # return Response(
+            #     {"error": "No cities found from previous suggestions."},
+            #     status=status.HTTP_400_BAD_REQUEST
+            # )
 
         # Step 2: Get venues in those cities
         venues = Venue.objects.filter(is_completed=True, city__in=cities)
@@ -1309,7 +1314,7 @@ class TourVenueSuggestionsAPI(APIView):
         if max_capacity:
             venues = venues.filter(capacity__lte=max_capacity)
 
-        serializer = TourVenueSuggestionSerializer(venues, many=True, context={'request': request})
+        serializer = VenueSerializer(venues, many=True, context={'request': request})
         return Response({
             "count": venues.count(),
             "results": serializer.data
@@ -1622,7 +1627,6 @@ def signed_events(request, contract_id=None):
             } for contract in contracts
         ]
         return Response({'signed_events': data})
-    return Response({'signed_events': data})
 
 
 

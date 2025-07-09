@@ -330,7 +330,7 @@ def update_profile(request):
 
     elif user.role == ROLE_CHOICES.VENUE:
         try:
-            profile = user.venue
+            profile = user.venue_profile
             serializer_class = VenueProfileSerializer
         except Venue.DoesNotExist:
             return Response({'detail': 'Venue profile not found.'}, status=status.HTTP_404_NOT_FOUND)
