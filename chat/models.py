@@ -8,7 +8,14 @@ import os
 def email_attachment_path(instance, filename):
     # File will be uploaded to MEDIA_ROOT/email_attachments/<email_id>/<filename>
     return f'email_attachments/{instance.email.id}/{filename}'
-
+class ChatRoomManager(models.Manager):
+    def get_or_create_between_users(self, user1, user2):
+        room = self.filter(participants=user1).filter(participants=user2).first()
+        if room:
+            return room, False
+        room = self.create()
+        room.participants.set([user1, user2])
+        return room, True
 class ChatRoom(models.Model):
     ROOM_TYPE_CHOICES = (
         ('private', 'Private'),
@@ -21,7 +28,15 @@ class ChatRoom(models.Model):
     # gig = models.ForeignKey('gig.Gig', on_delete=models.CASCADE, null=True, blank=True, related_name='chat_rooms')
     updated_at = models.DateTimeField(auto_now=True)
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='chat_rooms')
+    objects = ChatRoomManager() 
 
+    def get_or_create_between_users(self, user1, user2):
+        room = self.filter(participants=user1).filter(participants=user2).first()
+        if room:
+            return room, False
+        room = self.create()
+        room.participants.set([user1, user2])
+        return room, True
     def __str__(self):
         return self.name if self.room_type == 'group' else f'Chat {self.id}'
 

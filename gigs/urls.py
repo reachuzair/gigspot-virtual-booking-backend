@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    GigByCityView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_user_gigs, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
+    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_user_gigs, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
@@ -18,6 +18,7 @@ router.register(r'tours', TourViewSet, basename='tour')
 gig_urls = [
     # Gig listing and details
     path('', list_gigs, name='list_gigs'),
+    path('gigdetail/<int:id>/', GigDetailView.as_view(), name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
     path('upcoming/<int:artist_id>/', UpcomingGigsView.as_view(), name='artist_upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
@@ -59,7 +60,7 @@ gig_urls = [
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
     path('requests/invite-list/', submitted_requests, name='submitted-requests'),
     path('requests/received/', my_requests, name='my-requests'),
-    path('events/signed/', signed_events, name='signed-events'),
+    path('events/signed/', signed_events, name='events'),
     path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),
      path('<int:gig_id>/collab-share/', get_collab_payment_share, name='get-collab-payment-share'),
      path('Myrequests/', get_user_gigs, name='my_requests'),
@@ -74,6 +75,7 @@ tour_urls = [
     path('tours/<int:tour_id>/suggest-venues/', 
          TourVenueSuggestionsAPI().as_view(), 
          name='suggest-venues'),
+     path("tours/<int:tour_id>/selected-venues/", SelectedTourVenuesView.as_view()),
     path('tours/<int:tour_id>/booked-venues/', 
          BookedVenuesAPI().as_view(), 
          name='booked-venues'),

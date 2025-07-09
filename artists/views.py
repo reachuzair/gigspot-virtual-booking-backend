@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from custom_auth.models import Artist, PerformanceTier, Venue
 from gigs.models import Gig, Status
 from gigs.serializers import GigSerializer
-from .serializers import ArtistSerializer, ArtistAnalyticsSerializer
+from .serializers import  ArtistAnalyticsSerializer, ArtistSerializer
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
 

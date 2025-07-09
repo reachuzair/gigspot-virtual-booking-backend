@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from custom_auth.serializers import VenueSerializer
 from .models import TourVenueSuggestion, Tour
 from custom_auth.models import Venue, Artist
 
@@ -24,16 +26,20 @@ class TourSerializer(serializers.ModelSerializer):
     #     return data
 
 
-class VenueSerializer(serializers.ModelSerializer):
-    """Serializer for Venue model in the context of tour planning"""
-    class Meta:
-        model = Venue
-        fields = [
-            'id', 'name', 'city', 'state', 'address', 
-            'capacity', 'venue_type', 'description',
-            'profile_image', 'cover_image', 'is_active'
-        ]
-        read_only_fields = fields
+# class VenueSerializer(serializers.ModelSerializer):
+#     """Serializer for Venue model in the context of tour planning"""
+#     name = serializers.SerializerMethodField()
+#     class Meta:
+#         model = Venue
+#         fields = [
+#             'id', 'name', 'city', 'state', 'address', 
+#             'capacity', 'venue_type', 'description',
+#             'profile_image', 'cover_image', 'is_active'
+#         ]
+#         read_only_fields = fields
+#     def get_name(self, obj):
+#         return obj.user.name if hasattr(obj, 'user') and obj.user else ""
+    
 
 class TourVenueSuggestionSerializer(serializers.ModelSerializer):
     """Serializer for TourVenueSuggestion model"""
@@ -42,7 +48,7 @@ class TourVenueSuggestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = TourVenueSuggestion
         fields = [
-            'id', 'venue', 'event_date', 'is_booked',
+            'id', 'venue', 'event_date','order', 'is_booked',
             'created_at', 'updated_at'
         ]
         read_only_fields = fields

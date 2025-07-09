@@ -481,6 +481,7 @@ class TourVenueSuggestion(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ['tour', 'event_date']
@@ -489,7 +490,7 @@ class TourVenueSuggestion(models.Model):
         verbose_name_plural = 'Tour Venue Suggestions'
 
     def __str__(self):
-        return f"{self.venue.name} for {self.tour.title} on {self.event_date}"
+        return f"{self.venue.user.name if self.venue and self.venue.user else 'Unknown'} for {self.tour.title} on {self.event_date}"
     
     @classmethod
     def get_booked_venues(cls, tour_id):

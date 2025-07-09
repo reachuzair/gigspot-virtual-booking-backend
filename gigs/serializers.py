@@ -2,6 +2,7 @@ import json
 from rest_framework import serializers
 from django.utils import timezone
 from django.core.files.storage import default_storage
+from django.db import models
 
 
 from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourStatus
@@ -80,7 +81,10 @@ class GigSerializer(serializers.ModelSerializer):
     is_part_of_tour = serializers.BooleanField(read_only=True)
     tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
     tour_order = serializers.IntegerField(required=False, allow_null=True)
-    venue=VenueSerializer()
+    # venue_id=serializers.PrimaryKeyRelatedField(queryset=Venue.objects.all())
+    venue = VenueSerializer(read_only=True)
+    created_by = UserSerializer(read_only=True)
+    likes_count = serializers.SerializerMethodField()
     
 
     class Meta:
@@ -90,9 +94,10 @@ class GigSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'gig_type', 'event_date',
             'booking_start_date', 'booking_end_date', 'flyer_image',
             'flyer_bg', 'flyer_bg_url', 'minimum_performance_tier',
-            'max_artists', 'max_tickets', 'ticket_price', 'venue_fee',
+            'max_artists', 'max_tickets', 'ticket_price', 'venue_fee','collaborators',
+            'invitees', 'likes', 'likes_count',
             'status', 'is_public', 'sold_out', 'slot_available', 'price_validation',
-            'request_message', 'expires_at', 'created_at', 'updated_at',
+            'request_message', 'expires_at', 'created_at', 'updated_at',#'venue_id',
 
             # Related fields
 
@@ -110,6 +115,9 @@ class GigSerializer(serializers.ModelSerializer):
             'updated_at', 'expires_at',  'is_liked',
             'user', 'name', 'max_artist', 'flyer_image', 'flyer_bg', 'flyer_bg_url'
         ]
+    def get_likes_count(self, obj):
+        """Return the count of likes for the gig."""
+        return obj.likes.count() if obj.likes else 0
 
     def get_flyer_image(self, obj):
         """Return the URL of the flyer image if it exists."""
@@ -284,7 +292,7 @@ class GigDetailSerializer(serializers.ModelSerializer):
             'booking_end_date', 'flyer_image', 'minimum_performance_tier',
             'max_artists', 'max_tickets', 'ticket_price', 'venue_fee',
             'status', 'gig_type', 'is_public', 'sold_out', 'slot_available',
-            'likes_count', 'is_liked', 'venue', 'created_by', 'collaborators',
+            'likes_count', 'is_liked', 'venue', 'created_by', 'collaborators','request_message',
             'invitees', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
