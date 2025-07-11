@@ -12,6 +12,8 @@ from django.utils import timezone
 from django.conf import settings
 import stripe
 import json
+from django.db.models import Max
+
 
 from custom_auth.models import Artist, Venue
 from .models import (
@@ -189,8 +191,17 @@ class SubscriptionPlansView(APIView):
                 name__in=['STARTER', 'BOOSTED', 'PREMIUM']
             ).order_by('monthly_price'))
             
+            latest_artist_plan_ids = SubscriptionPlan.objects.filter(
+                is_active=True,
+                subscription_tier__in=['FREE', 'PREMIUM']
+            ).values('subscription_tier').annotate(
+                latest_id=Max('id')
+            ).values_list('latest_id', flat=True)
+
+            # Fetch only latest active plans
+            artist_plans = list(SubscriptionPlan.objects.filter(id__in=latest_artist_plan_ids))
             # Filter out any plans that don't match our expected types
-            artist_plans = [p for p in artist_plans if p.subscription_tier.upper() in ['FREE', 'PREMIUM']]
+            # artist_plans = [p for p in artist_plans if p.subscription_tier.upper() in ['FREE', 'PREMIUM']]
             venue_plans = [p for p in venue_plans if p.name.upper() in ['STARTER', 'BOOSTED', 'PREMIUM']]
             
             # Serialize plans

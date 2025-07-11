@@ -1531,7 +1531,7 @@ class Artist(models.Model):
 
 class Venue(models.Model):
     id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='venue_profile')
     verification_docs = models.FileField(
                 upload_to='venue_verification_docs', blank=True, null=True)
     location = models.JSONField(default=list)
@@ -1603,7 +1603,10 @@ class Venue(models.Model):
         verbose_name_plural = 'Venues'
 
     def __str__(self):
-        return f"{self.user.name} - {self.get_performance_tier_display()}"
+        return f"{self.user.name} - {self.tier.get_tier_display() if self.tier else 'No Tier'}"
+
+
+
 
     def get_dirty_fields(self):
         """
@@ -1663,6 +1666,7 @@ class Venue(models.Model):
             
         # Check if the artist's tier is in the venue's eligible tiers
         return artist_tier_name in self.get_eligible_artist_tiers()
+    
 
 
 class Fan(models.Model):

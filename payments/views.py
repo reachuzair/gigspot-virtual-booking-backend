@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from custom_auth.models import Artist
-from gigs.models import Gig
+from gigs.models import Contract, Gig
 from payments.models import Payment, PaymentStatus
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser
@@ -928,100 +928,75 @@ def get_purchased_tickets_detail(request, gig_id):
 @permission_classes([IsAuthenticated])
 def capture_payment_intent(request):
     """
-    Capture a PaymentIntent that was created with `capture_method="manual"`.
+    Confirm and/or capture a PaymentIntent (manual or automatic capture).
 
     Body params:
     ─────────────────────────────────────────────
     payment_intent_id   (str, required)
-    payment_method_id   (str, optional) – only needed if the PI is still waiting
-                                           for a payment method / confirmation
+    payment_method_id   (str, optional) – required if status is `requires_payment_method`
     """
 
     payment_intent_id = request.data.get('payment_intent_id')
-    payment_method_id = request.data.get('payment_method_id')  # Optional, only needed if the PI is still waiting for a payment method
+    payment_method_id = request.data.get('payment_method_id')
 
     if not payment_intent_id:
-        return Response(
-            {'detail': 'payment_intent_id is required.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'detail': 'payment_intent_id is required.'}, status=400)
 
     try:
         intent = stripe.PaymentIntent.retrieve(payment_intent_id)
 
         if intent.status == 'requires_payment_method':
             if not payment_method_id:
-                return Response(
-                    {
-                        'detail': (
-                            'This PaymentIntent still needs a payment method. '
-                            'Provide payment_method_id or confirm it client‑side '
-                            'before capturing.'
-                        ),
-                        'stripe_status': intent.status
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({
+                    'detail': (
+                        'This PaymentIntent still needs a payment method. '
+                        'Provide payment_method_id or confirm it client‑side.'
+                    ),
+                    'stripe_status': intent.status
+                }, status=400)
 
+            # Confirm with payment method and prevent redirects
+            intent = stripe.PaymentIntent.confirm(
+                payment_intent_id,
+                payment_method=payment_method_id,
+                
+            )
+
+        elif intent.status == 'requires_confirmation':
+            # Confirm without payment_method if one already attached
             intent = stripe.PaymentIntent.confirm(
                 payment_intent_id,
                 payment_method=payment_method_id
+                
             )
 
-            if intent.status != 'requires_capture':
-                return Response(
-                    {
-                        'detail': f'Unable to capture – PI now has status {intent.status}.',
-                        'stripe_status': intent.status
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        elif intent.status == 'requires_confirmation':
-            intent = stripe.PaymentIntent.confirm(payment_intent_id)
-
-            if intent.status != 'requires_capture':
-                return Response(
-                    {
-                        'detail': f'Unable to capture – PI now has status {intent.status}.',
-                        'stripe_status': intent.status
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        elif intent.status == 'requires_capture':
-            pass
-
-        elif intent.status == 'succeeded':
-            return Response(
-                {'detail': 'PaymentIntent is already captured.'},
-                status=status.HTTP_200_OK
-            )
-        else:
-            return Response(
-                {
-                    'detail': (
-                        f'Cannot capture PaymentIntent in status "{intent.status}". '
-                        'Complete payment on the client first.'
-                    ),
-                    'stripe_status': intent.status
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        captured_intent = stripe.PaymentIntent.capture(payment_intent_id)
-
-        return Response(
-            {
+        # Only capture if required
+        if intent.status == 'requires_capture':
+            captured_intent = stripe.PaymentIntent.capture(payment_intent_id)
+            return Response({
                 'detail': 'Payment captured successfully.',
                 'payment_intent': captured_intent
-            },
-            status=status.HTTP_200_OK
-        )
+            }, status=200)
+
+        elif intent.status == 'succeeded':
+            return Response({'detail': 'PaymentIntent is already captured.'}, status=200)
+
+        else:
+            return Response({
+                'detail': (
+                    f'Cannot capture PaymentIntent in status "{intent.status}". '
+                    'Complete payment client-side if needed.'
+                ),
+                'stripe_status': intent.status
+            }, status=400)
+
+    except stripe.error.CardError as e:
+        return Response({'detail': str(e.user_message or str(e))}, status=400)
 
     except stripe.error.InvalidRequestError as e:
-        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': f'Stripe error: {str(e)}'}, status=400)
 
     except Exception as e:
-        return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'detail': f'Unexpected error: {str(e)}'}, status=500)
+
 

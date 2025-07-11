@@ -4,8 +4,10 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from artists.serializers import ArtistSerializer
 from custom_auth.models import User, Artist, Venue, Fan
 from custom_auth.models import ROLE_CHOICES
+from custom_auth.serializers import FanSerializer, UserSerializer, VenueSerializer
 from users.serializers import ArtistProfileSerializer, FanProfileSerializer,  VenueProfileSerializer
 from .models import UserSettings
 from rt_notifications.utils import create_notification
@@ -14,6 +16,8 @@ from django.core.files.storage import default_storage
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
+from django.core.serializers.json import DjangoJSONEncoder
+import json
 # Create your views here.
 
 
@@ -22,59 +26,52 @@ from rest_framework.views import APIView
 def user_profile(request):
     try:
         user = request.user
+
+        # Base response with safe user serialization
         response_data = {
-            'id': user.id,
-            'email': user.email,
-            'role': user.role,
-            'name': user.name,
-            "profileImage": user.profileImage.url if user.profileImage else None
+            'user': UserSerializer(user).data
         }
 
-        def get_artist_data(artist):
-            artist_data = model_to_dict(
-                artist, exclude=['verification_docs', 'logo']
-            )
-            
+        if user.role == ROLE_CHOICES.ARTIST:
+            artist = Artist.objects.get(user=user)
+            artist_data = ArtistSerializer(artist).data
+
+            # Add file/image fields safely
             artist_data['verification_docs'] = artist.verification_docs.url if artist.verification_docs and artist.verification_docs.name else None
             artist_data['logo'] = artist.logo.url if artist.logo and artist.logo.name else None
 
-            # Default to 'free' tier
-            artist_data['subscription_tier'] = 'free'
+            # Extra user-related info if needed
+            artist_data['user_id'] = artist.user.id
+            artist_data['user_email'] = artist.user.email
 
-            # Update to 'premium' if they have an active premium subscription
+            # Default and override subscription tier
+            artist_data['subscription_tier'] = 'free'
             if hasattr(artist, 'subscription') and artist.subscription:
-                if artist.subscription.status == 'active' and hasattr(artist.subscription, 'plan'):
-                    if artist.subscription.plan.subscription_tier.upper() == 'PREMIUM':
+                plan = getattr(artist.subscription, 'plan', None)
+                if artist.subscription.status == 'active' and plan:
+                    if getattr(plan, 'subscription_tier', '').upper() == 'PREMIUM':
                         artist_data['subscription_tier'] = 'premium'
 
-            return artist_data
+            response_data['artist'] = artist_data
 
+        elif user.role == ROLE_CHOICES.VENUE:
+            venue = Venue.objects.get(user=user)
+            venue_data = VenueSerializer(venue).data
 
-        def get_venue_data(venue):
-            venue_data = model_to_dict(
-                venue,
-                exclude=['verification_docs', 'seating_plan', 'proof_document', 'proof_url', 'logo']
-            )
+            # Add media fields and tier display
             venue_data['verification_docs'] = venue.verification_docs.url if venue.verification_docs and venue.verification_docs.name else None
             venue_data['seating_plan'] = venue.seating_plan.url if venue.seating_plan and venue.seating_plan.name else None
             venue_data['proof_document'] = venue.proof_document.url if venue.proof_document and venue.proof_document.name else None
             venue_data['proof_url'] = venue.proof_url if venue.proof_url else None
             venue_data['logo'] = venue.logo.url if venue.logo and venue.logo.name else None
-            
-            # Add venue tier classification if available
             venue_data['tier'] = venue.tier.get_tier_display() if hasattr(venue, 'tier') and venue.tier else None
 
-            return venue_data
+            response_data['venue'] = venue_data
 
-        if user.role == ROLE_CHOICES.ARTIST:
-            artist = Artist.objects.get(user=user)
-            response_data['artist'] = get_artist_data(artist)
-        elif user.role == ROLE_CHOICES.VENUE:
-            venue = Venue.objects.get(user=user)
-            response_data['venue'] = get_venue_data(venue)
         elif user.role == ROLE_CHOICES.FAN:
             fan = Fan.objects.get(user=user)
-            response_data['fan'] = model_to_dict(fan)
+            fan_data = FanSerializer(fan).data
+            response_data['fan'] = fan_data
 
         return Response(response_data)
 
@@ -333,7 +330,7 @@ def update_profile(request):
 
     elif user.role == ROLE_CHOICES.VENUE:
         try:
-            profile = user.venue
+            profile = user.venue_profile
             serializer_class = VenueProfileSerializer
         except Venue.DoesNotExist:
             return Response({'detail': 'Venue profile not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -359,3 +356,33 @@ def update_profile(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_venues_and_artists(request):
+    """
+    Get all venues and artists with their basic profile information.
+    """
+    try:
+        venues = Venue.objects.all()
+        artists = Artist.objects.all()
+
+        # Serialize separately
+        venue_serializer = VenueProfileSerializer(venues, many=True, context={'request': request})
+        artist_serializer = ArtistProfileSerializer(artists, many=True, context={'request': request})
+
+        # Add a 'type' field to distinguish each item
+        venues_data = [{**item, 'type': 'venue'} for item in venue_serializer.data]
+        artists_data = [{**item, 'type': 'artist'} for item in artist_serializer.data]
+
+        # Combine both lists
+        combined = venues_data + artists_data
+
+        # Optional: sort alphabetically or by ID, etc.
+        # combined.sort(key=lambda x: x.get('name', ''))
+
+        return Response(combined, status=status.HTTP_200_OK)
+
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)

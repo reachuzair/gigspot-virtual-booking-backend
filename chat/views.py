@@ -164,6 +164,8 @@ class DeleteMessageView(APIView):
             return Response({"detail": f"{deleted_count} messages deleted successfully."}, status=204)
 
 
+from users.serializers import UserSerializer
+
 class InboxView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -172,14 +174,11 @@ class InboxView(APIView):
 
         # Get all rooms the user participates in
         rooms = ChatRoom.objects.filter(participants=user).distinct()
-
         room_list = []
 
         for room in rooms:
             # Get last message
-            last_message = (
-                room.messages.order_by("-created_at").first()
-            )
+            last_message = room.messages.order_by("-created_at").first()
 
             # Count unread messages
             unread_count = MessageReadStatus.objects.filter(
@@ -188,17 +187,20 @@ class InboxView(APIView):
                 is_read=False
             ).count()
 
-            # For private room, find the other participant
-            other_user = None
+            # Find the other user in private chat
+            other_user_obj = None
             if room.room_type == 'private':
                 others = room.participants.exclude(id=user.id)
-                other_user = others.first().name if others.exists() else None
+                other_user_obj = others.first() if others.exists() else None
+
+            # Serialize other_user
+            other_user_data = UserSerializer(other_user_obj).data if other_user_obj else None
 
             room_list.append({
                 "room_id": room.id,
                 "room_name": room.name if room.name else f"Chat {room.id}",
                 "room_type": room.room_type,
-                "other_user": other_user,
+                "other_user": other_user_data,
                 "last_message": {
                     "id": last_message.id,
                     "text": last_message.content.get("text", "") if last_message else "",
@@ -209,6 +211,7 @@ class InboxView(APIView):
             })
 
         return Response(room_list, status=200)
+
 
 class MarkMessagesAsReadView(APIView):
     permission_classes = [permissions.IsAuthenticated]

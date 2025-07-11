@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import logging
 from rest_framework import serializers
 from custom_auth.models import Artist, ArtistMonthlyMetrics
-from gigs.models import Gig
+from gigs.models import Gig, GigInvite
 from django.db.models import Max
 from django.utils import timezone
 
@@ -17,6 +17,19 @@ class ArtistSerializer(serializers.ModelSerializer):
     bannerImage = serializers.ImageField(source='logo', read_only=True)
     likes = serializers.IntegerField(source='likes.count', read_only=True)
     is_liked = serializers.SerializerMethodField()
+    is_invited = serializers.SerializerMethodField()
+
+    def get_is_invited(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        # Check if the current user has invited this artist (regardless of gig)
+        return GigInvite.objects.filter(
+            artist_received=obj,
+            user=request.user
+        ).exists()
+
 
     def get_artistGenre(self, obj):
         # Get the first gig for this artist
@@ -25,7 +38,8 @@ class ArtistSerializer(serializers.ModelSerializer):
             return None
             
         # Return genre from details JSON field if available
-        return gig.details.get('genre') if gig.details else None
+        return getattr(gig, 'genre', None)
+
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
@@ -35,7 +49,9 @@ class ArtistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artist
         fields = [
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked'
+            'is_invited',
+            'logo',  # Assuming logo is the profile image
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked','stripe_account_id'
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
 
@@ -64,53 +80,48 @@ class ArtistAnalyticsSerializer(serializers.ModelSerializer):
     
     def get_historical(self, obj):
         """Get historical monthly metrics for the past 12 months"""
-        # Calculate date range
         end_date = timezone.now().replace(day=1)
         start_date = (end_date - timedelta(days=365)).replace(day=1)
-        
-        # Get all metrics for this date range
+
         metrics = ArtistMonthlyMetrics.objects.filter(
             artist=obj,
             month__gte=start_date,
             month__lte=end_date
         ).order_by('month')
-        
-        # Create a list of all months in the range
+
         months = []
         current = start_date
         while current <= end_date:
             months.append(current)
-            # Move to first day of next month
             if current.month == 12:
                 current = current.replace(year=current.year + 1, month=1, day=1)
             else:
                 current = current.replace(month=current.month + 1, day=1)
-        
-        # Create a dict of month -> metrics for easy lookup
+
         metrics_dict = {m.month.strftime('%Y-%m-01'): m for m in metrics}
-        
-        # Build the historical data array
+
         historical_data = []
         for month in months:
             month_key = month.strftime('%Y-%m-01')
+            label = month.strftime('%B %Y')  # e.g., "July 2024"
+
             if month_key in metrics_dict:
                 m = metrics_dict[month_key]
                 historical_data.append({
-                    'month': month.strftime('%Y-%m'),
+                    'month': label,
                     'fan_engagement': round(float(m.fan_engagement_pct or 0), 1),
                     'social_following': round(float(m.social_following_pct or 0), 1),
                     'playlist_views': round(float(m.playlist_views_pct or 0), 1),
                     'buzz_score': round(float(m.buzz_score_pct or 0), 1)
                 })
             else:
-                # If no data for this month, use zeros or previous value
                 prev_value = historical_data[-1] if historical_data else None
                 historical_data.append({
-                    'month': month.strftime('%Y-%m'),
+                    'month': label,
                     'fan_engagement': prev_value['fan_engagement'] if prev_value else 0,
                     'social_following': prev_value['social_following'] if prev_value else 0,
                     'playlist_views': prev_value['playlist_views'] if prev_value else 0,
                     'buzz_score': prev_value['buzz_score'] if prev_value else 0
                 })
-        
+
         return historical_data

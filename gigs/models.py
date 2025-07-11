@@ -59,7 +59,7 @@ class VehicleType(models.TextChoices):
 class Tour(models.Model):
     """Model for managing multi-city tours"""
     id = models.AutoField(primary_key=True)
-    title = models.CharField(max_length=255, help_text='Name of the tour')
+    title = models.CharField(max_length=255, help_text='Name of the tour',null=True, blank=True)
     
     # Tour planning fields
     vehicle_type = models.CharField(
@@ -88,8 +88,8 @@ class Tour(models.Model):
         related_name='tours',
         help_text='The artist/band going on tour'
     )
-    start_date = models.DateField(help_text='Tour start date')
-    end_date = models.DateField(help_text='Tour end date')
+    start_date = models.DateField(help_text='Tour start date',null=True, blank=True)
+    end_date = models.DateField(help_text='Tour end date',null=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=TourStatus.choices,
@@ -481,6 +481,7 @@ class TourVenueSuggestion(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    order = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ['tour', 'event_date']
@@ -489,7 +490,7 @@ class TourVenueSuggestion(models.Model):
         verbose_name_plural = 'Tour Venue Suggestions'
 
     def __str__(self):
-        return f"{self.venue.name} for {self.tour.title} on {self.event_date}"
+        return f"{self.venue.user.name if self.venue and self.venue.user else 'Unknown'} for {self.tour.title} on {self.event_date}"
     
     @classmethod
     def get_booked_venues(cls, tour_id):

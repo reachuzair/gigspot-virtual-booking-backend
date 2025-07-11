@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from custom_auth.serializers import UserSerializer
 from .models import ChatRoom, Message, EmailThread, EmailMessage, EmailAttachment, EmailThreadParticipant
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -26,17 +28,25 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 
 
 class MessageSerializer(serializers.ModelSerializer):
-    sender_username = serializers.CharField(source='sender.name', read_only=True)
-    receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+    # sender_username = serializers.CharField(source='sender.name', read_only=True)
+    # receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+    sender = UserSerializer(read_only=True)
+    receiver = UserSerializer(read_only=True)
     attachment_url = serializers.SerializerMethodField()
+    
 
     class Meta:
         model = Message
         fields = [
-            'id', 'sender_id', 'sender_username', 'receiver_id',
+            'id', 'sender',  'receiver',
             'content', 'timestamp', 'is_read',
             'attachment_url'
         ]
+    def get_profile_image(self, obj):
+        """Get the profile image URL of the sender"""
+        if obj.sender and obj.sender.profile_image:
+            return obj.sender.profile_image.url
+        return None
 
     def get_attachment_url(self, obj):
         return obj.attachment.url if obj.attachment else None
@@ -77,11 +87,7 @@ class EmailMessageSerializer(serializers.ModelSerializer):
         write_only=True,
         required=True
     )
-    cc_recipients = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=User.objects.all(),
-        required=False
-    )
+    cc_recipients = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
     
     def validate(self, attrs):
         # Get or initialize cc_recipients
@@ -203,29 +209,23 @@ class EmailMessageSerializer(serializers.ModelSerializer):
 
 class EmailThreadListSerializer(serializers.ModelSerializer):
     """Simplified serializer for email threads in the inbox"""
-    sender_name = serializers.SerializerMethodField()
-    sender_email = serializers.SerializerMethodField()
     preview = serializers.SerializerMethodField()
     date = serializers.SerializerMethodField()
+    sender = serializers.SerializerMethodField()
 
     class Meta:
         model = EmailThread
-        fields = ['id', 'subject', 'preview', 'date', 'sender_name', 'sender_email']
+        fields = ['id', 'subject', 'preview', 'date','sender']
         read_only_fields = fields
-
+    def get_sender(self, obj):
+        latest_message = self.get_latest_message(obj)
+        return UserSerializer(latest_message.sender).data if latest_message and latest_message.sender else None
     def get_latest_message(self, obj):
         # Cache the latest message to avoid multiple queries
         if not hasattr(obj, '_latest_message'):
             obj._latest_message = obj.emails.order_by('-created_at').first()
         return obj._latest_message
 
-    def get_sender_name(self, obj):
-        latest_message = self.get_latest_message(obj)
-        return latest_message.sender.name if latest_message and latest_message.sender else None
-
-    def get_sender_email(self, obj):
-        latest_message = self.get_latest_message(obj)
-        return latest_message.sender.email if latest_message and latest_message.sender else None
 
     def get_preview(self, obj):
         latest_message = self.get_latest_message(obj)

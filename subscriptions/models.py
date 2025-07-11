@@ -19,116 +19,7 @@ class SubscriptionStatus(models.TextChoices):
     UNPAID = 'unpaid', _('Unpaid')
     INACTIVE = 'inactive', _('Inactive')
 
-class SubscriptionPlan(models.Model):
-    """
-    Stores the Stripe subscription plan details for artists
-    """
-    TIER_CHOICES = [
-        ('FREE', 'Free'),
-        ('PREMIUM', 'Premium')
-    ]
-    
-    subscription_tier = models.CharField(
-        max_length=255, 
-        choices=TIER_CHOICES,
-    )
-    stripe_price_id = models.CharField(max_length=100, blank=True, null=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    billing_interval = models.CharField(
-        max_length=20,
-        choices=[('month', 'Monthly'), ('year', 'Yearly')],
-        default='month'
-    )
-    features = models.JSONField(default=dict)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    FEATURE_MAP = {
-        'FREE': {
-            'description': 'Free Starter Plan for emerging or part-time artists',
-            'price': 0.00,
-            'billing_interval': 'month',
-            'features': [
-                'Basic Artist Profile with bio, photos, and music links',
-                'Connect social media accounts',
-                'Public Artist Page with basic stats and past shows',
-                'Join 1 show per calendar month',
-                'View upcoming tour opportunities (read-only)',
-                'Basic analytics for your gigs (ticket sales, attendance)',
-                'Fan engagement through messages/comments',
-                'Basic BuzzScore tracking (current score and trend only)'
-            ],
-            'max_shows': 1,
-            'max_shows_period_days': 30,
-            'create_tour': False,
-            'create_show': True,
-            'merch_store': False,
-            'analytics': 'basic',
-            'buzz_score': 'basic_view',
-            'can_message_fans': True,
-            'can_view_tours': True,
-            'can_join_tours': False,
-            'can_create_tours': False,
-            'priority_support': False,
-        },
-        'PREMIUM': {
-            'description': 'Professional artist tools for serious musicians',
-            'price': 20.00,
-            'billing_interval': 'month',
-            'features': [
-                'Unlimited show applications',
-                'Create and manage tours with AI/Manual route planning',
-                'Sell merchandise and digital products',
-                'Automated promotional scheduler with AI content',
-                'Advanced BuzzScore analytics and optimization',
-                'Priority customer support',
-                'All features from FREE tier'
-            ],
-            'max_shows': None,  
-            'create_tour': True,
-            'create_show': True,
-            'merch_store': True,
-            'analytics': 'advanced',
-            'buzz_score': 'full_analytics',
-            'can_message_fans': True,
-            'can_view_tours': True,
-            'can_join_tours': True,
-            'can_create_tours': True,
-            'priority_support': True,
-        }
-    }
-    def __str__(self):
-        return f"{self.get_subscription_tier_display()} - ${self.price}/{self.billing_interval}"
-        
-    @property
-    def can_create_show(self):
-        """Check if artist can create a new show based on their subscription"""
-        if self.subscription_tier == 'FREE':
-            from datetime import datetime, timedelta
-            from django.utils import timezone
-            from gigs.models import Gig  # Assuming this is the correct import path
-            
-            # Count shows in the last 30 days
-            thirty_days_ago = timezone.now() - timedelta(days=30)
-            show_count = Gig.objects.filter(
-                artist=self.artist,
-                created_at__gte=thirty_days_ago
-            ).count()
-            
-            return show_count < self.FEATURE_MAP['FREE']['max_shows']
-        return True
-    
-    def save(self, *args, **kwargs):
-        self.features = self.FEATURE_MAP.get(self.subscription_tier, {})
-        super().save(*args, **kwargs)
-        
-    def can_create_tour(self):
-        """
-        Check if the artist can create a tour based on their subscription.
-        Only premium users can create tours.
-        """
-        return self.subscription_tier == 'PREMIUM' and self.status == 'active'
 
 class VenueAdTier(models.TextChoices):
     STARTER = 'STARTER', 'Starter'
@@ -228,7 +119,119 @@ class VenueAdPlan(models.Model):
             self.features = tier_data['features']
         super().save(*args, **kwargs)
 
+class SubscriptionPlan(models.Model):
+    """
+    Stores the Stripe subscription plan details for artists
+    """
+    TIER_CHOICES = [
+        ('FREE', 'Free'),
+        ('PREMIUM', 'Premium')
+    ]
+    
+    subscription_tier = models.CharField(
+        max_length=255, 
+        choices=TIER_CHOICES,
+    )
+    venue_ad_plan = models.ForeignKey(
+        VenueAdPlan, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    stripe_price_id = models.CharField(max_length=100, blank=True, null=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    billing_interval = models.CharField(
+        max_length=20,
+        choices=[('month', 'Monthly'), ('year', 'Yearly')],
+        default='month'
+    )
+    features = models.JSONField(default=dict)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+    FEATURE_MAP = {
+        'FREE': {
+            'description': 'Free Starter Plan for emerging or part-time artists',
+            'price': 0.00,
+            'billing_interval': 'month',
+            'features': [
+                'Basic Artist Profile with bio, photos, and music links',
+                'Connect social media accounts',
+                'Public Artist Page with basic stats and past shows',
+                'Join 1 show per calendar month',
+                'View upcoming tour opportunities (read-only)',
+                'Basic analytics for your gigs (ticket sales, attendance)',
+                'Fan engagement through messages/comments',
+                'Basic BuzzScore tracking (current score and trend only)'
+            ],
+            'max_shows': 1,
+            'max_shows_period_days': 30,
+            'create_tour': False,
+            'create_show': True,
+            'merch_store': False,
+            'analytics': 'basic',
+            'buzz_score': 'basic_view',
+            'can_message_fans': True,
+            'can_view_tours': True,
+            'can_join_tours': False,
+            'can_create_tours': False,
+            'priority_support': False,
+        },
+        'PREMIUM': {
+            'description': 'Professional artist tools for serious musicians',
+            'price': 20.00,
+            'billing_interval': 'month',
+            'features': [
+                'Unlimited show applications',
+                'Create and manage tours with AI/Manual route planning',
+                'Sell merchandise and digital products',
+                'Automated promotional scheduler with AI content',
+                'Advanced BuzzScore analytics and optimization',
+                'Priority customer support',
+                'All features from FREE tier'
+            ],
+            'max_shows': None,  
+            'create_tour': True,
+            'create_show': True,
+            'merch_store': True,
+            'analytics': 'advanced',
+            'buzz_score': 'full_analytics',
+            'can_message_fans': True,
+            'can_view_tours': True,
+            'can_join_tours': True,
+            'can_create_tours': True,
+            'priority_support': True,
+        }
+    }
+    def __str__(self):
+        return f"{self.get_subscription_tier_display()} - ${self.price}/{self.billing_interval}"
+        
+    @property
+    def can_create_show(self):
+        """Check if artist can create a new show based on their subscription"""
+        if self.subscription_tier == 'FREE':
+            from datetime import datetime, timedelta
+            from django.utils import timezone
+            from gigs.models import Gig  # Assuming this is the correct import path
+            
+            # Count shows in the last 30 days
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            show_count = Gig.objects.filter(
+                artist=self.artist,
+                created_at__gte=thirty_days_ago
+            ).count()
+            
+            return show_count < self.FEATURE_MAP['FREE']['max_shows']
+        return True
+    
+    def save(self, *args, **kwargs):
+        self.features = self.FEATURE_MAP.get(self.subscription_tier, {})
+        super().save(*args, **kwargs)
+        
+    def can_create_tour(self):
+        """
+        Check if the artist can create a tour based on their subscription.
+        Only premium users can create tours.
+        """
+        return self.subscription_tier == 'PREMIUM' and self.status == 'active'
 class VenueSubscription(models.Model):
     """
     Tracks a venue's ad subscription status
@@ -250,7 +253,7 @@ class VenueSubscription(models.Model):
     ]
     
     venue = models.ForeignKey('custom_auth.Venue', on_delete=models.CASCADE, related_name='ad_subscriptions')
-    plan = models.ForeignKey(VenueAdPlan, on_delete=models.PROTECT)
+    plan = models.ForeignKey(SubscriptionPlan, on_delete=models.PROTECT)
     
     # Stripe fields
     stripe_customer_id = models.CharField(max_length=100)
@@ -305,6 +308,7 @@ class ArtistSubscription(models.Model):
     stripe_subscription_id = models.CharField(max_length=100)
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.SET_NULL, null=True)
     status = models.CharField(max_length=20, default='inactive')
+    current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
     cancel_at_period_end = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -313,6 +317,11 @@ class ArtistSubscription(models.Model):
     def __str__(self):
         return f"{self.artist.user.name} - {self.plan}"
 
+    def can_create_tour(self):
+        return (
+            self.status == SubscriptionStatus.ACTIVE and
+            self.plan and self.plan.subscription_tier == 'PREMIUM'
+        )
     def update_from_stripe(self):
         """Sync with Stripe subscription data"""
         try:

@@ -2,6 +2,7 @@ from asyncio.log import logger
 from datetime import timedelta
 import stripe
 from rest_framework import serializers
+from custom_auth.serializers import VenueSerializer
 from gigspot_backend import settings
 from .models import Gig, Status, GigType
 import io
@@ -35,13 +36,13 @@ from django.shortcuts import get_object_or_404
 from .models import TourStatus, TourVenueSuggestion
 from .serializers_tour import TourSerializer
 from custom_auth.permissions import IsPremiumUser
-
+from chat.models import ChatRoom, Message
 from PIL import ImageFont, ImageDraw
 
 from custom_auth.models import ROLE_CHOICES, Venue, Artist, User, PerformanceTier
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
-
+from django.utils.timezone import now
 from .models import Gig, Contract, GigInvite, GigType, Status, GigInviteStatus, Tour, TourVenueSuggestion
 from .serializers import (
     GigSerializer,
@@ -90,13 +91,14 @@ def list_gigs(request):
                 (Q(gig_type=GigType.ARTIST_GIG, is_public=True, status='approved')) |
                 (Q(gig_type=GigType.VENUE_GIG, status='approved'))
             )
-        elif hasattr(user, 'venue'):
+        elif hasattr(user, 'venue_profile'):
             # For venues:
             # 1. Their own gigs (created by them)
             # 2. All public artist gigs
             # 3. All other venue gigs
             gigs = gigs.filter(
                 Q(created_by=user) |
+                (Q(venue=user.venue_profile)) |
                 (Q(gig_type=GigType.ARTIST_GIG, is_public=True, status='approved')) |
                 (Q(gig_type=GigType.VENUE_GIG, status='approved'))
             )
@@ -194,7 +196,7 @@ class GigDetailView(APIView):
     """
     Retrieve a gig by ID with detailed information
     """
-    permission_classes = []  # Handle authentication in the method
+    permission_classes = []  # Handle authentication manually
 
     def get(self, request, id):
         user = request.user if request.user.is_authenticated else None
@@ -238,16 +240,17 @@ class GigDetailView(APIView):
 
         # Check user role-based visibility
         if hasattr(user, 'artist'):
-            # Artists can see their collaborations, venue gigs, or public artist gigs
+            # Artists can see their collaborations, their own gigs, venue gigs, or public artist gigs
             return (
+                gig.created_by == user or
                 user in gig.collaborators.all() or
                 gig.gig_type == GigType.VENUE_GIG or
                 (gig.gig_type == GigType.ARTIST_GIG and gig.is_public)
             )
-        elif hasattr(user, 'venue'):
+        elif hasattr(user, 'venue_profile'):
             # Venues can see gigs at their venue, or public gigs
             return (
-                gig.venue == user.venue or
+                gig.venue == user.venue_profile or
                 (gig.gig_type == GigType.ARTIST_GIG and gig.is_public) or
                 gig.gig_type == GigType.VENUE_GIG
             )
@@ -448,13 +451,12 @@ class UpcomingGigsView(generics.ListAPIView):
 def send_invite_request(request, id):
     user = request.user
 
-    if user.role != ROLE_CHOICES.VENUE and user.role != ROLE_CHOICES.ARTIST:
+    if user.role not in ['venue', 'artist']:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
     data = request.data.copy()
-    artist = data.get('artist', None)
-
-    if artist is None:
+    artist_id = data.get('artist')
+    if not artist_id:
         return Response({'detail': 'artist value missing'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -463,19 +465,50 @@ def send_invite_request(request, id):
             return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
-        artist = Artist.objects.get(id=artist)
+        artist = Artist.objects.get(id=artist_id)
+
+        # 1. Create gig invite
         gig_invite = GigInvite.objects.create(
-            gig=gig, user=user, artist_received=artist)
-        gig_invite.save()
+            status=GigInviteStatus.PENDING,
+            gig=gig,
+            user=user,
+            artist_received=artist
+        )
+
+        # 2. Create or get chat room
+        room, _ = ChatRoom.objects.get_or_create_between_users(user, artist.user)
+
+        # 3. Send invite message in chat
+        Message.objects.create(
+            chat_room=room,
+            sender=user,
+            receiver=artist.user,
+            content={
+                "invite_id": gig_invite.id,
+                "type": "invite",
+            }
+        )
+
+        # 4. System notification (optional)
+        create_notification(
+            user,
+            'system',
+            'Gig invitation sent',
+            **gig.__dict__
+        )
+
+        return Response(
+            {'message': 'Gig invitation sent successfully'},
+            status=status.HTTP_201_CREATED
+        )
+
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
+
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-    create_notification(request.user, 'system',
-                        'Gig invitation sent', **gig.__dict__)
-    return Response({
-        'message': 'Gig invitation sent successfully'
-    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['PUT'])
@@ -485,14 +518,16 @@ def accept_invite_request(request, id):
 
     if user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    owner_id = request.data.get('owner', None)
 
-    if owner_id is None:
+    owner_id = request.data.get('owner')
+    if not owner_id:
         return Response({'detail': 'owner value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
         owner = User.objects.get(id=owner_id)
     except User.DoesNotExist:
@@ -504,23 +539,41 @@ def accept_invite_request(request, id):
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        gig_invite = GigInvite.objects.get(
-            gig=gig, user=owner, artist_received=artist, status='pending')
-        if gig_invite is None:
+        gig_invite = GigInvite.objects.filter(
+            gig=gig, user=owner, artist_received=artist, status='pending'
+        ).first()
+
+        if not gig_invite:
             return Response({'detail': 'Gig invite not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Accept invite
         gig_invite.status = GigInviteStatus.ACCEPTED
         gig_invite.save()
-        # Add artist to both invitees and collaborators
+
+        # Add artist to gig
         gig.invitees.add(artist)
         gig.collaborators.add(artist.user)
         gig.save()
+
+        room, _ = ChatRoom.objects.get_or_create_between_users(user, owner)
+
+        Message.objects.create(
+            chat_room=room,
+            sender=user,
+            receiver=owner,
+            content={
+                "type": "invite_accepted",
+                "invite_id": gig_invite.id
+            }
+        )
+
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Notification and response
+    create_notification(request.user, 'system', 'Gig invite accepted', **gig.__dict__)
+    
     serializer = GigSerializer(gig)
-
-    create_notification(request.user, 'system',
-                        'Gig invite accepted', **gig.__dict__)
     return Response({
         'gig': serializer.data,
         'message': 'Gig invite accepted successfully'
@@ -534,14 +587,16 @@ def reject_invite_request(request, id):
 
     if user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    owner_id = request.data.get('owner', None)
 
-    if owner_id is None:
+    owner_id = request.data.get('owner')
+    if not owner_id:
         return Response({'detail': 'owner value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
         owner = User.objects.get(id=owner_id)
     except User.DoesNotExist:
@@ -553,19 +608,36 @@ def reject_invite_request(request, id):
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        gig_invite = GigInvite.objects.get(
-            gig=gig, user=owner, artist_received=artist, status='pending')
-        if gig_invite is None:
+        gig_invite = GigInvite.objects.filter(
+            gig=gig, user=owner, artist_received=artist, status='pending'
+        ).first()
+
+        if not gig_invite:
             return Response({'detail': 'Gig invite not found'}, status=status.HTTP_404_NOT_FOUND)
+
         gig_invite.status = GigInviteStatus.REJECTED
         gig_invite.save()
+
+        
+        room, _ = ChatRoom.objects.get_or_create_between_users(user, owner)
+
+        Message.objects.create(
+            chat_room=room,
+            sender=user,
+            receiver=owner,
+            content={
+                "type": "invite_rejected",
+                "invite_id": gig_invite.id,
+            }
+        )
+
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    serializer = GigSerializer(gig)
+    # System notification and response
+    create_notification(request.user, 'system', 'Gig invite rejected', **gig.__dict__)
 
-    create_notification(request.user, 'system',
-                        'Gig invite rejected', **gig.__dict__)
+    serializer = GigSerializer(gig)
     return Response({
         'gig': serializer.data,
         'message': 'Gig invite rejected successfully'
@@ -1158,6 +1230,7 @@ def sign_contract(request, contract_id):
                     contract.venue.stripe_account_id if total_artists == 1 else
                     collaborators[0].stripe_account_id
                 )
+
             },
             metadata={
                 "contract_id": contract.id,
@@ -1175,6 +1248,7 @@ def sign_contract(request, contract_id):
         })
 
     return Response({'detail': 'Contract signed successfully'}, status=200)
+
 
 
 @api_view(['POST'])
@@ -1270,97 +1344,83 @@ def validate_ticket_price(request):
     })
 
 
+
 class TourVenueSuggestionsAPI(APIView):
     """
-    API for managing venue suggestions for a tour.
+    Suggest venues based on cities from already suggested venues in a tour.
+    Also allows adding venues to the tour with custom order.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, tour_id):
-        """
-        Get venue suggestions for a tour based on criteria.
-        
-        Expected POST data:
-        {
-            "cities": ["New York", "Boston"],
-            "min_capacity": 100,  # optional
-            "max_capacity": 1000,  # optional
-            "venue_types": ["bar", "club"]  # optional
-        }
-        """
+        tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
+        venue_id = request.data.get('venue_id')
+        order = request.data.get('order', 0)
 
-        try:
-            # Debug logging
-            logger.info(f"Looking for tour_id={tour_id} for user={request.user.id} ({request.user.email})")
-            
-            # Get the tour and verify ownership
-            try:
-                tour = Tour.objects.get(id=tour_id, artist__user=request.user)
-                logger.info(f"Found tour: {tour.id} - {tour.title}")
-            except Tour.DoesNotExist:
-                logger.error(f"Tour not found or access denied. Tour ID: {tour_id}, User ID: {request.user.id}")
-                logger.error(f"Available tours for user: {list(Tour.objects.filter(artist__user=request.user).values_list('id', flat=True))}")
-                return Response(
-                    {"error": "Tour not found or you don't have permission to access it"}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Get filter parameters
-            cities = request.data.get('cities', [])
-            min_capacity = request.data.get('min_capacity')
-            max_capacity = request.data.get('max_capacity')
-            venue_types = request.data.get('venue_types', [])
-            
-            if not cities:
-                return Response(
-                    {"error": "At least one city is required"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Start with completed venues (assuming is_completed=True means venue is active/ready)
-            venues = Venue.objects.filter(is_completed=True)
-            logger.info(f"Found {venues.count()} completed venues")
-            
-            # Filter by cities in location field
-            city_filters = Q()
-            for city in cities:
-                city_filters |= Q(location__icontains=city.lower())
-            
-            if city_filters:
-                venues = venues.filter(city_filters)
-                logger.info(f"After city filter: {venues.count()} venues")
-            
-            # Apply additional filters if provided
-            if min_capacity is not None:
-                venues = venues.filter(capacity__gte=min_capacity)
-            if max_capacity is not None:
-                venues = venues.filter(capacity__lte=max_capacity)
-            # Note: venue_type filter is removed as it's not available in the Venue model
-            
-            # Create or update suggestions for these venues
-            suggestions = []
-            for venue in venues:
-                suggestion, _ = TourVenueSuggestion.objects.get_or_create(
-                    tour=tour,
-                    venue=venue,
-                    defaults={'event_date': timezone.now().date()}
-                )
-                suggestions.append(suggestion)
-            
-            # Serialize the response
-            serializer = TourVenueSuggestionSerializer(suggestions, many=True)
-            return Response({
-                "count": len(suggestions),
-                "results": serializer.data
-            })
-            
-        except Exception as e:
-            logger.error(f"Error in suggest_venues: {str(e)}", exc_info=True)
-            return Response(
+        venue = get_object_or_404(Venue, id=venue_id)
 
-                {"error": "An error occurred while processing your request"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        suggestion, created = TourVenueSuggestion.objects.update_or_create(
+            tour=tour,
+            venue=venue,
+            defaults={'order': order}
+        )
+
+        return Response({
+            "status": "success",
+            "message": "Venue suggestion added to tour.",
+            "suggestion_id": suggestion.id
+        })
+
+    def get(self, request, tour_id):
+        user = request.user
+        tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
+
+        min_capacity = request.query_params.get('min_capacity')
+        max_capacity = request.query_params.get('max_capacity')
+
+        existing_suggestions = TourVenueSuggestion.objects.filter(tour=tour).select_related('venue')
+        cities = list({
+            s.venue.city for s in existing_suggestions if s.venue and s.venue.city
+        })
+
+        if not cities:
+            cities = tour.selected_cities or []
+
+        venues = Venue.objects.filter(is_completed=True, city__in=cities)
+
+        if min_capacity:
+            venues = venues.filter(capacity__gte=min_capacity)
+        if max_capacity:
+            venues = venues.filter(capacity__lte=max_capacity)
+
+        suggested_ids = existing_suggestions.values_list('venue_id', flat=True)
+        venues = venues.exclude(id__in=suggested_ids)
+
+        serializer = VenueSerializer(venues, many=True, context={'request': request})
+        return Response({
+            "count": venues.count(),
+            "results": serializer.data
+        })
+class SelectedTourVenuesView(APIView):
+    """
+    Returns the list of selected venues for a tour, including the custom order.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, tour_id):
+        user = request.user
+        tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
+
+        suggestions = TourVenueSuggestion.objects.filter(
+            tour=tour
+        ).select_related('venue').order_by('order', 'created_at')
+
+        serializer = TourVenueSuggestionSerializer(suggestions, many=True, context={'request': request})
+        return Response({
+            "count": suggestions.count(),
+            "results": serializer.data
+        })
+
 
 
 class TourViewSet(viewsets.ModelViewSet):
@@ -1561,23 +1621,62 @@ class GigByCityView(APIView):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def submitted_requests(request):
+def invited_list(request, invite_id=None):
     user = request.user
-    invites = GigInvite.objects.filter(
-        user=user).select_related('gig', 'artist_received')
-    venue =Venue.objects.filter(user=user).first()
-    data = [
-        {
+    venue = Venue.objects.filter(user=user).first()
+
+    # Try getting artist profile (for invited user)
+    artist_profile = getattr(user, 'artist_profile', None)
+
+    if invite_id:
+        try:
+            invite = GigInvite.objects.select_related(
+                'gig', 'gig__venue', 'artist_received', 'artist_received__user'
+            ).get(id=invite_id)
+        except GigInvite.DoesNotExist:
+            return Response({'detail': 'Invite not found'}, status=404)
+
+        # Ensure current user is either the inviter or the invited artist
+        if not (invite.user == user or (artist_profile and invite.artist_received == artist_profile)):
+            return Response({'detail': 'Not authorized to view this invite'}, status=403)
+
+        data = {
+            "event_date": invite.gig.event_date,
+            'invite_id': invite.id,
             'gig_id': invite.gig.id,
             'gig_title': invite.gig.title,
             'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
-            'artist': invite.artist_received.user.name,
             'status': invite.status,
             'sent_at': invite.created_at,
             'address': invite.gig.venue.address if invite.gig.venue else None,
-        } for invite in invites
+        }
+        return Response({'invite': data})
+
+    # Get all invites where user is sender or receiver
+    invites = GigInvite.objects.select_related(
+        'gig', 'gig__venue', 'artist_received', 'artist_received__user'
+    ).filter(
+        Q(user=user) | Q(artist_received=artist_profile)
+    )
+
+    data = [
+        {
+            "event_date": invite.gig.event_date,
+            'invite_id': invite.id,
+            'gig_id': invite.gig.id,
+            'gig_title': invite.gig.title,
+            'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
+            'status': invite.status,
+            'sent_at': invite.created_at,
+            'address': invite.gig.venue.address if invite.gig.venue else None,
+        }
+        for invite in invites
     ]
-    return Response({'submitted_requests': data})
+
+    return Response({'Invites': data})
+
+
+
 
 
 @api_view(['GET'])
@@ -1591,6 +1690,7 @@ def my_requests(request):
         artist_received=user.artist_profile).select_related('gig', 'user')
     data = [
         {
+            
             'gig_id': invite.gig.id,
             'gig_title': invite.gig.title,
             'sent_by': invite.user.name,
@@ -1606,9 +1706,9 @@ def my_requests(request):
 def signed_events(request, contract_id=None):
     user = request.user
 
-    if hasattr(user, 'venue'):
-        role_field = 'venue'
-        role_obj = user.venue
+    if hasattr(user, 'venue_profile'):
+        role_field = 'venue_profile'
+        role_obj = user.venue_profile
     elif hasattr(user, 'artist_profile'):
         role_field = 'artist_profile'
         role_obj = user.artist_profile
@@ -1667,7 +1767,6 @@ def signed_events(request, contract_id=None):
             } for contract in contracts
         ]
         return Response({'signed_events': data})
-    return Response({'signed_events': data})
 
 
 
@@ -1675,7 +1774,7 @@ def signed_events(request, contract_id=None):
 @permission_classes([IsAuthenticated])
 def artist_event_history(request):
     user = request.user
-    if not hasattr(user, 'artist'):
+    if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can access event history.'}, status=403)
 
     artist_user = user
@@ -1699,11 +1798,28 @@ def artist_event_history(request):
 def pending_venue_gigs(request):
     user = request.user
 
-    if not hasattr(user, 'venue') or not user.venue:
+    if not hasattr(user, 'venue_profile') or user.venue_profile is None:
         return Response({'detail': 'Only venue users can view pending gigs.'}, status=403)
 
+    gig_id = request.query_params.get('gig_id')
+
+    if gig_id:
+        try:
+            gig = Gig.objects.get(
+                id=gig_id,
+                venue=user.venue_profile,
+                status=Status.PENDING,
+                gig_type=GigType.ARTIST_GIG
+            )
+        except Gig.DoesNotExist:
+            return Response({'detail': 'Pending gig not found.'}, status=404)
+
+        serializer = GigSerializer(gig, context={'request': request})
+        return Response({'gig': serializer.data})
+
+    # Otherwise, return all pending gigs
     pending_gigs = Gig.objects.filter(
-        venue=user.venue,
+        venue=user.venue_profile,
         status=Status.PENDING,
         gig_type=GigType.ARTIST_GIG
     ).order_by('-created_at')
@@ -1715,4 +1831,74 @@ def pending_venue_gigs(request):
         "count": pending_gigs.count(),
         "pending_gigs": serializer.data
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_collab_payment_share(request, gig_id):
+    user = request.user
+
+    try:
+        artist = Artist.objects.get(user=user)
+    except Artist.DoesNotExist:
+        return Response({'detail': 'Artist profile not found'}, status=404)
+
+    try:
+        gig = Gig.objects.get(id=gig_id)
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=404)
+
+    # Get the artist's contract for this gig
+    # contract = Contract.objects.filter(artist=artist, gig=gig).order_by('-created_at').first()
+    # if not contract:
+    #     return Response({'detail': 'No contract found for this gig'}, status=404)
+
+    collaborators = list(gig.collaborators.all())
+
+    if user not in collaborators:
+        collaborators.append(user)
+
+    total_artists = len(collaborators)
+    if total_artists == 0:
+        return Response({'detail': 'No collaborators found'}, status=400)
+    if not gig.is_public and not gig.invitees.filter(id=user.id).exists():
+        return Response({'detail': 'Access denied. You are not invited to this private gig.'}, status=403)
+
+
+    total_fee = gig.venue_fee # in cents
+    per_artist_share = total_fee // total_artists
+
+    return Response({
+        # "contract_id": contract.id,
+        "gig_id": gig.id,
+        "total_fee": total_fee,
+        "total_artists": total_artists,
+        "per_artist_share": per_artist_share,
+        "currency": "usd"
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_gigs(request):
+    """
+    Get all gigs created by the artist (not including collaborations).
+    """
+    user = request.user
+
+    if not hasattr(user, 'artist_profile'):
+        return Response({'detail': 'Only artists can view their gigs.'}, status=403)
+
+    gigs = Gig.objects.filter(
+        created_by=user
+    ).order_by('-created_at')
+
+    serializer = GigSerializer(gigs, many=True, context={'request': request})
+
+    return Response({
+        "count": gigs.count(),
+        "gigs": serializer.data
+    })
+
+
+
 

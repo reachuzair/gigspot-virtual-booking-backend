@@ -4,6 +4,8 @@ from custom_auth.serializers import UserSerializer
 
 
 class ArtistProfileSerializer(serializers.ModelSerializer):
+    user= UserSerializer(read_only=True)
+    likes= serializers.IntegerField(source='likes.count', read_only=True)
     class Meta:
         model = Artist
         fields = '__all__'

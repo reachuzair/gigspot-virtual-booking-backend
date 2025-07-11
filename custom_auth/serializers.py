@@ -32,6 +32,7 @@ class VenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = Venue
         fields = (
+            'id',
             'name',
             'phone_number',
             'logo',
@@ -53,7 +54,7 @@ class VenueSerializer(serializers.ModelSerializer):
         return data
 
     def get_name(self, obj):
-        return obj.user.name
+        return obj.user.name if hasattr(obj, 'user') and obj.user else ""
 
 
 class FanSerializer(serializers.ModelSerializer):

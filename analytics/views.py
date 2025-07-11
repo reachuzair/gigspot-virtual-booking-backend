@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from django.db.models.functions import TruncMonth
 from gigs.models import Contract, Gig
 from django.db.models import F
-
+from decimal import Decimal
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -76,7 +76,7 @@ def analytics_overview(request):
         revenue_change = 0
         change_dir = "up"
 
-    profit = current_month * 0.4
+    profit = Decimal('0.4')
     profit_change = revenue_change 
 
     return Response({
