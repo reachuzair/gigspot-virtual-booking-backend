@@ -24,11 +24,19 @@ def list_artists(request):
     except Artist.DoesNotExist:
         requesting_artist = None
         user_tier = None
+
     search_query = request.query_params.get('search', '')
+    gig_id = request.query_params.get('gig_id')  # Get gig_id from query params
+
     if search_query:
-        queryset = Artist.objects.select_related('user').filter(Q(band_name__icontains=search_query) | Q(user__name__icontains=search_query) | Q(user__email__icontains=search_query))
+        queryset = Artist.objects.select_related('user').filter(
+            Q(band_name__icontains=search_query) |
+            Q(user__name__icontains=search_query) |
+            Q(user__email__icontains=search_query)
+        )
     else:
         queryset = Artist.objects.select_related('user').all()
+
     # Exclude the requesting artist
     queryset = queryset.exclude(user=user)
 
@@ -41,7 +49,7 @@ def list_artists(request):
     else:
         sorted_artists = list(queryset)
 
-    # Pagination using DRF's PageNumberPagination
+    # Pagination
     class CustomPagination(PageNumberPagination):
         page_size_query_param = 'page_size'
         max_page_size = 100
@@ -49,8 +57,14 @@ def list_artists(request):
 
     paginator = CustomPagination()
     paginated_artists = paginator.paginate_queryset(sorted_artists, request)
-    serializer = ArtistSerializer(paginated_artists, many=True)
+
+    # Pass gig_id to serializer context
+    serializer = ArtistSerializer(paginated_artists, many=True, context={
+        'request': request
+    })
+
     return paginator.get_paginated_response(serializer.data)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

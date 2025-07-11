@@ -1,9 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_user_gigs, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
+    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_user_gigs, invited_list, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
-    initiate_gig, add_gig_type, add_gig_details, signed_events, submitted_requests, update_gig_status,
+    initiate_gig, add_gig_type, add_gig_details, signed_events, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
     create_venue_event, add_gig_venue_fee, validate_ticket_price, TourViewSet
 )
@@ -58,7 +58,8 @@ gig_urls = [
     
     # Gig filtering and requests
     path('by-city/', GigByCityView.as_view(), name='list_gigs_by_city'),
-    path('requests/invite-list/', submitted_requests, name='submitted-requests'),
+    path('requests/invite-list/', invited_list, name='submitted-requests'),
+    path('requests/invite-list/<int:invite_id>/', invited_list, name='submitted-requests'),
     path('requests/received/', my_requests, name='my-requests'),
     path('events/signed/', signed_events, name='events'),
     path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),

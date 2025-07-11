@@ -4,6 +4,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
 
+from rt_notifications.models import Notification
+
 # Configure Django settings if not already configured
 if not settings.configured:
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'gigspot_backend.settings')

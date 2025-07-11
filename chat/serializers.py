@@ -28,17 +28,25 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 
 
 class MessageSerializer(serializers.ModelSerializer):
-    sender_username = serializers.CharField(source='sender.name', read_only=True)
-    receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+    # sender_username = serializers.CharField(source='sender.name', read_only=True)
+    # receiver_id = serializers.IntegerField(source='receiver.id', allow_null=True, read_only=True)
+    sender = UserSerializer(read_only=True)
+    receiver = UserSerializer(read_only=True)
     attachment_url = serializers.SerializerMethodField()
+    
 
     class Meta:
         model = Message
         fields = [
-            'id', 'sender_id', 'sender_username', 'receiver_id',
+            'id', 'sender',  'receiver',
             'content', 'timestamp', 'is_read',
             'attachment_url'
         ]
+    def get_profile_image(self, obj):
+        """Get the profile image URL of the sender"""
+        if obj.sender and obj.sender.profile_image:
+            return obj.sender.profile_image.url
+        return None
 
     def get_attachment_url(self, obj):
         return obj.attachment.url if obj.attachment else None

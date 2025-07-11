@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import logging
 from rest_framework import serializers
 from custom_auth.models import Artist, ArtistMonthlyMetrics
-from gigs.models import Gig
+from gigs.models import Gig, GigInvite
 from django.db.models import Max
 from django.utils import timezone
 
@@ -17,6 +17,19 @@ class ArtistSerializer(serializers.ModelSerializer):
     bannerImage = serializers.ImageField(source='logo', read_only=True)
     likes = serializers.IntegerField(source='likes.count', read_only=True)
     is_liked = serializers.SerializerMethodField()
+    is_invited = serializers.SerializerMethodField()
+
+    def get_is_invited(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        # Check if the current user has invited this artist (regardless of gig)
+        return GigInvite.objects.filter(
+            artist_received=obj,
+            user=request.user
+        ).exists()
+
 
     def get_artistGenre(self, obj):
         # Get the first gig for this artist
@@ -25,7 +38,8 @@ class ArtistSerializer(serializers.ModelSerializer):
             return None
             
         # Return genre from details JSON field if available
-        return gig.details.get('genre') if gig.details else None
+        return getattr(gig, 'genre', None)
+
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
@@ -35,6 +49,7 @@ class ArtistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artist
         fields = [
+            'is_invited',
             'logo',  # Assuming logo is the profile image
             'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked','stripe_account_id'
         ]

@@ -308,6 +308,7 @@ class ArtistSubscription(models.Model):
     stripe_subscription_id = models.CharField(max_length=100)
     plan = models.ForeignKey(SubscriptionPlan, on_delete=models.SET_NULL, null=True)
     status = models.CharField(max_length=20, default='inactive')
+    current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
     cancel_at_period_end = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

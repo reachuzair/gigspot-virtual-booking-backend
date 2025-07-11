@@ -486,13 +486,8 @@ def send_invite_request(request, id):
             sender=user,
             receiver=artist.user,
             content={
+                "invite_id": gig_invite.id,
                 "type": "invite",
-                "gig_id": gig.id,
-                "date": gig.event_date.strftime('%Y-%m-%d %H:%M:%S') if gig.event_date else None,
-                "location": gig.venue.location if gig.venue else None,
-                "gig_title": gig.title,
-                "text": f"You have been invited to join gig '{gig.title}'",
-                "status": "pending"
             }
         )
 
@@ -523,14 +518,16 @@ def accept_invite_request(request, id):
 
     if user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    owner_id = request.data.get('owner', None)
 
-    if owner_id is None:
+    owner_id = request.data.get('owner')
+    if not owner_id:
         return Response({'detail': 'owner value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
         owner = User.objects.get(id=owner_id)
     except User.DoesNotExist:
@@ -542,23 +539,41 @@ def accept_invite_request(request, id):
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        gig_invite = GigInvite.objects.get(
-            gig=gig, user=owner, artist_received=artist, status='pending')
-        if gig_invite is None:
+        gig_invite = GigInvite.objects.filter(
+            gig=gig, user=owner, artist_received=artist, status='pending'
+        ).first()
+
+        if not gig_invite:
             return Response({'detail': 'Gig invite not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Accept invite
         gig_invite.status = GigInviteStatus.ACCEPTED
         gig_invite.save()
-        # Add artist to both invitees and collaborators
+
+        # Add artist to gig
         gig.invitees.add(artist)
         gig.collaborators.add(artist.user)
         gig.save()
+
+        room, _ = ChatRoom.objects.get_or_create_between_users(user, owner)
+
+        Message.objects.create(
+            chat_room=room,
+            sender=user,
+            receiver=owner,
+            content={
+                "type": "invite_accepted",
+                "invite_id": gig_invite.id
+            }
+        )
+
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Notification and response
+    create_notification(request.user, 'system', 'Gig invite accepted', **gig.__dict__)
+    
     serializer = GigSerializer(gig)
-
-    create_notification(request.user, 'system',
-                        'Gig invite accepted', **gig.__dict__)
     return Response({
         'gig': serializer.data,
         'message': 'Gig invite accepted successfully'
@@ -572,14 +587,16 @@ def reject_invite_request(request, id):
 
     if user.role != ROLE_CHOICES.ARTIST:
         return Response({'detail': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-    owner_id = request.data.get('owner', None)
 
-    if owner_id is None:
+    owner_id = request.data.get('owner')
+    if not owner_id:
         return Response({'detail': 'owner value missing'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
         owner = User.objects.get(id=owner_id)
     except User.DoesNotExist:
@@ -591,19 +608,36 @@ def reject_invite_request(request, id):
         return Response({'detail': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        gig_invite = GigInvite.objects.get(
-            gig=gig, user=owner, artist_received=artist, status='pending')
-        if gig_invite is None:
+        gig_invite = GigInvite.objects.filter(
+            gig=gig, user=owner, artist_received=artist, status='pending'
+        ).first()
+
+        if not gig_invite:
             return Response({'detail': 'Gig invite not found'}, status=status.HTTP_404_NOT_FOUND)
+
         gig_invite.status = GigInviteStatus.REJECTED
         gig_invite.save()
+
+        
+        room, _ = ChatRoom.objects.get_or_create_between_users(user, owner)
+
+        Message.objects.create(
+            chat_room=room,
+            sender=user,
+            receiver=owner,
+            content={
+                "type": "invite_rejected",
+                "invite_id": gig_invite.id,
+            }
+        )
+
     except Exception as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    serializer = GigSerializer(gig)
+    # System notification and response
+    create_notification(request.user, 'system', 'Gig invite rejected', **gig.__dict__)
 
-    create_notification(request.user, 'system',
-                        'Gig invite rejected', **gig.__dict__)
+    serializer = GigSerializer(gig)
     return Response({
         'gig': serializer.data,
         'message': 'Gig invite rejected successfully'
@@ -1587,25 +1621,62 @@ class GigByCityView(APIView):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def submitted_requests(request):
+def invited_list(request, invite_id=None):
     user = request.user
-    invites = GigInvite.objects.filter(
-        user=user).select_related('gig', 'artist_received')
-    venue =Venue.objects.filter(user=user).first()
-    data = [
-        {
+    venue = Venue.objects.filter(user=user).first()
+
+    # Try getting artist profile (for invited user)
+    artist_profile = getattr(user, 'artist_profile', None)
+
+    if invite_id:
+        try:
+            invite = GigInvite.objects.select_related(
+                'gig', 'gig__venue', 'artist_received', 'artist_received__user'
+            ).get(id=invite_id)
+        except GigInvite.DoesNotExist:
+            return Response({'detail': 'Invite not found'}, status=404)
+
+        # Ensure current user is either the inviter or the invited artist
+        if not (invite.user == user or (artist_profile and invite.artist_received == artist_profile)):
+            return Response({'detail': 'Not authorized to view this invite'}, status=403)
+
+        data = {
+            "event_date": invite.gig.event_date,
+            'invite_id': invite.id,
             'gig_id': invite.gig.id,
             'gig_title': invite.gig.title,
             'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
-            'artist': invite.artist_received.user.name,
-            'artist_id': invite.artist_received.id,
-            'price': invite.gig.venue_fee if venue else invite.gig.ticket_price,
             'status': invite.status,
             'sent_at': invite.created_at,
             'address': invite.gig.venue.address if invite.gig.venue else None,
-        } for invite in invites
+        }
+        return Response({'invite': data})
+
+    # Get all invites where user is sender or receiver
+    invites = GigInvite.objects.select_related(
+        'gig', 'gig__venue', 'artist_received', 'artist_received__user'
+    ).filter(
+        Q(user=user) | Q(artist_received=artist_profile)
+    )
+
+    data = [
+        {
+            "event_date": invite.gig.event_date,
+            'invite_id': invite.id,
+            'gig_id': invite.gig.id,
+            'gig_title': invite.gig.title,
+            'flyer_image': invite.gig.flyer_image.url if invite.gig.flyer_image else None,
+            'status': invite.status,
+            'sent_at': invite.created_at,
+            'address': invite.gig.venue.address if invite.gig.venue else None,
+        }
+        for invite in invites
     ]
-    return Response({'submitted_requests': data})
+
+    return Response({'Invites': data})
+
+
+
 
 
 @api_view(['GET'])
@@ -1619,6 +1690,7 @@ def my_requests(request):
         artist_received=user.artist_profile).select_related('gig', 'user')
     data = [
         {
+            
             'gig_id': invite.gig.id,
             'gig_title': invite.gig.title,
             'sent_by': invite.user.name,
