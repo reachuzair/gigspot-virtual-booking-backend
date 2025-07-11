@@ -1348,30 +1348,74 @@ def validate_ticket_price(request):
 class TourVenueSuggestionsAPI(APIView):
     """
     Suggest venues based on cities from already suggested venues in a tour.
-    Also allows adding venues to the tour with custom order.
+    Also allows booking (selecting) a venue in the tour via POST.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, tour_id):
-        tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
-        venue_id = request.data.get('venue_id')
-        order = request.data.get('order', 0)
+        """
+        Bulk select (book) venues for the tour.
 
-        venue = get_object_or_404(Venue, id=venue_id)
+        Expected POST data:
+        {
+            "venues": [
+                { "venue_id": 123, "order": 1 },
+                { "venue_id": 124, "order": 2 }
+            ]
+        }
+        """
+        try:
+            tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
+            venues_data = request.data.get('venues')
 
-        suggestion, created = TourVenueSuggestion.objects.update_or_create(
-            tour=tour,
-            venue=venue,
-            defaults={'order': order}
-        )
+            if not isinstance(venues_data, list) or not venues_data:
+                return Response(
+                    {"error": "A non-empty 'venues' list is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response({
-            "status": "success",
-            "message": "Venue suggestion added to tour.",
-            "suggestion_id": suggestion.id
-        })
+            booked_suggestions = []
+
+            for item in venues_data:
+                venue_id = item.get('venue_id')
+                order = item.get('order', 0)
+
+                if not venue_id:
+                    continue  # Skip invalid entry
+
+                venue = get_object_or_404(Venue, id=venue_id, is_completed=True)
+
+                suggestion, _ = TourVenueSuggestion.objects.update_or_create(
+                    tour=tour,
+                    venue=venue,
+                    defaults={
+                        'order': order,
+                        'is_booked': True
+                    }
+                )
+                booked_suggestions.append(suggestion)
+
+            serializer = BookedVenueSerializer(booked_suggestions, many=True)
+            return Response(
+                {
+                    "message": "Venues booked successfully.",
+                    "booked_venues": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            logger.error(f"Error in TourVenueSuggestionsAPI POST: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred while booking venues."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
     def get(self, request, tour_id):
+        """
+        Get venue suggestions based on already selected cities or selected_cities on the tour.
+        """
         user = request.user
         tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
 
@@ -1401,6 +1445,7 @@ class TourVenueSuggestionsAPI(APIView):
             "count": venues.count(),
             "results": serializer.data
         })
+
 class SelectedTourVenuesView(APIView):
     """
     Returns the list of selected venues for a tour, including the custom order.
