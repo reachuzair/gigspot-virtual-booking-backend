@@ -17,8 +17,8 @@ class StripeConnectView(APIView):
         logger.info(f"[Stripe] Looking up Stripe account for user {user.id} ({user.email})")
         
         # Check artist profile first
-        if hasattr(user, 'artist'):
-            artist = user.artist
+        if hasattr(user, 'artist_profile'):
+            artist = user.artist_profile
             logger.info(f"[Stripe] User has artist profile: {artist.id}")
             
             # Check if artist has stripe_account_id attribute

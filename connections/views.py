@@ -22,6 +22,8 @@ def artist_connections(request):
         {
             'id': conn.id,
             'band_name': conn.band_name,
+            'name': conn.user.name,
+            'bannerImage': conn.user.profileImage.url if conn.user.profileImage else None,
             'user_id': conn.user.id,
             'state': conn.state,
             'performance_tier': conn.performance_tier,
@@ -81,7 +83,7 @@ def accept_connection_request(request):
     connection.save()
     artist.connections.add(target_artist)
     target_artist.connections.add(artist)
-    return Response({'detail': 'Connection accepted.'}, status=status.HTTP_201_CREATED)
+    return Response({'detail': 'Connection accepted.','artist_id': target_id}, status=status.HTTP_201_CREATED)
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
@@ -107,7 +109,7 @@ def reject_connection_request(request):
     connection = connection.first()
     connection.status = 'rejected'
     connection.save()
-    return Response({'detail': 'Connection rejected.'}, status=status.HTTP_201_CREATED)
+    return Response({'detail': 'Connection rejected.','artist_id': target_id}, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -130,8 +132,11 @@ def get_connection_requests(request):
     data = [
         {
             'id': conn.id,
+            "name":conn.connected_artist.user.name,
+            "bannerImage": conn.connected_artist.user.profileImage.url if conn.connected_artist.user.profileImage else None,
             'band_name': conn.connected_artist.band_name,
             'user_id': conn.connected_artist.user.id,
+            "artist_id": conn.connected_artist.id,
             'state': conn.connected_artist.state,
             'performance_tier': conn.connected_artist.performance_tier,
             'subscription_tier': conn.connected_artist.subscription_tier,

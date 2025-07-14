@@ -60,6 +60,6 @@ class BookedVenueSerializer(serializers.ModelSerializer):
     class Meta:
         model = TourVenueSuggestion
         fields = [
-            'id', 'venue', 'event_date', 'created_at'
+            'id', 'venue',  'created_at'
         ]
         read_only_fields = fields

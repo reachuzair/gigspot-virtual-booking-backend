@@ -38,7 +38,7 @@ from .serializers_tour import TourSerializer
 from custom_auth.permissions import IsPremiumUser
 from chat.models import ChatRoom, Message
 from PIL import ImageFont, ImageDraw
-
+from datetime import datetime
 from custom_auth.models import ROLE_CHOICES, Venue, Artist, User, PerformanceTier
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
@@ -272,70 +272,61 @@ def create_venue_event(request):
     user = request.user
 
     # Check if user is a venue
-    if not hasattr(user, 'venue') or not user.venue:
+    if not hasattr(user, 'venue_profile') or not user.venue_profile:
         return Response(
             {'detail': 'Only venue users with a valid venue can create venue events'},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Create a mutable copy of the request data
+    venue = user.venue_profile  
+
     data = request.data.copy()
 
-    # Set required fields for venue event
     data['gig_type'] = GigType.VENUE_GIG
     data['status'] = Status.PENDING
-    data['venue'] = user.venue.id
+    data['venue'] = venue.id  
     data['created_by'] = user.id
 
-    # Set default values if not provided
     if 'title' not in data:
-        data['title'] = f"Event at {user.venue.venue_name}"
+        data['title'] = f"Event at {venue.venue_name}"
     if 'description' not in data:
-        data['description'] = f"Event hosted by {user.venue.venue_name}"
+        data['description'] = f"Event hosted by {venue.venue_name}"
 
-    # Handle file upload
     if 'flyer_image' in request.FILES:
         data['flyer_image'] = request.FILES['flyer_image']
 
-    # Validate capacity against venue limits
-    venue = user.venue
+
     max_artists = int(data.get('max_artists', 1))
     max_tickets = int(data.get('max_tickets', 1))
 
     if max_artists > venue.artist_capacity:
         return Response(
-            {'detail': f'Maximum artists cannot exceed venue capacity of {user.name} which is {venue.artist_capacity} artists'},
+            {'detail': f'Maximum artists cannot exceed venue capacity of {user.name}, which is {venue.artist_capacity} artists'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     if max_tickets > venue.capacity:
         return Response(
-            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.venue_name} which is {venue.capacity} people'},
+            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.venue_name}, which is {venue.capacity} people'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Use the VenueEventSerializer for validation
     serializer = VenueEventSerializer(data=data, context={'request': request})
 
     if serializer.is_valid():
-        # Save with the correct gig_type and venue
         gig = serializer.save(
             gig_type=GigType.VENUE_GIG,
-            venue=user.venue,
+            venue=venue,
             created_by=user
         )
 
-        # Create notification
         create_notification(
             user=user,
             notification_type='venue_event_created',
             message=f'Successfully created venue event: {gig.title}',
             **gig.__dict__
         )
-
-        # Use the GigDetailSerializer which includes all necessary fields
-        response_serializer = GigDetailSerializer(
-            gig, context={'request': request})
+        response_serializer = GigDetailSerializer(gig, context={'request': request})
 
         return Response({
             'status': 'success',
@@ -348,6 +339,7 @@ def create_venue_event(request):
         'errors': serializer.errors,
         'message': 'Validation error'
     }, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class LikeGigView(APIView):
@@ -1348,30 +1340,74 @@ def validate_ticket_price(request):
 class TourVenueSuggestionsAPI(APIView):
     """
     Suggest venues based on cities from already suggested venues in a tour.
-    Also allows adding venues to the tour with custom order.
+    Also allows booking (selecting) a venue in the tour via POST.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, tour_id):
-        tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
-        venue_id = request.data.get('venue_id')
-        order = request.data.get('order', 0)
+        """
+        Bulk select (book) venues for the tour.
 
-        venue = get_object_or_404(Venue, id=venue_id)
+        Expected POST data:
+        {
+            "venues": [
+                { "venue_id": 123, "order": 1 },
+                { "venue_id": 124, "order": 2 }
+            ]
+        }
+        """
+        try:
+            tour = get_object_or_404(Tour, id=tour_id, artist__user=request.user)
+            venues_data = request.data.get('venues')
 
-        suggestion, created = TourVenueSuggestion.objects.update_or_create(
-            tour=tour,
-            venue=venue,
-            defaults={'order': order}
-        )
+            if not isinstance(venues_data, list) or not venues_data:
+                return Response(
+                    {"error": "A non-empty 'venues' list is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response({
-            "status": "success",
-            "message": "Venue suggestion added to tour.",
-            "suggestion_id": suggestion.id
-        })
+            booked_suggestions = []
+
+            for item in venues_data:
+                venue_id = item.get('venue_id')
+                order = item.get('order', 0)
+
+                if not venue_id:
+                    continue  # Skip invalid entry
+
+                venue = get_object_or_404(Venue, id=venue_id, is_completed=True)
+
+                suggestion, _ = TourVenueSuggestion.objects.update_or_create(
+                    tour=tour,
+                    venue=venue,
+                    defaults={
+                        'order': order,
+                        'is_booked': True
+                    }
+                )
+                booked_suggestions.append(suggestion)
+
+            serializer = BookedVenueSerializer(booked_suggestions, many=True)
+            return Response(
+                {
+                    "message": "Venues booked successfully.",
+                    "booked_venues": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            logger.error(f"Error in TourVenueSuggestionsAPI POST: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "An error occurred while booking venues."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
     def get(self, request, tour_id):
+        """
+        Get venue suggestions based on already selected cities or selected_cities on the tour.
+        """
         user = request.user
         tour = get_object_or_404(Tour, id=tour_id, artist__user=user)
 
@@ -1401,6 +1437,7 @@ class TourVenueSuggestionsAPI(APIView):
             "count": venues.count(),
             "results": serializer.data
         })
+
 class SelectedTourVenuesView(APIView):
     """
     Returns the list of selected venues for a tour, including the custom order.
@@ -1901,4 +1938,27 @@ def get_user_gigs(request):
 
 
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_event_by_date(request):
+    user = request.user
+
+    if not hasattr(user, 'venue_profile') or user.venue_profile is None:
+        return Response({"detail": "Only venue users can access this endpoint."},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    date_str = request.GET.get('date')
+    if not date_str:
+        return Response({"detail": "Date is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        venue = user.venue_profile 
+        events = Gig.objects.filter(venue=venue, event_date__date=date) 
+
+        serializer = GigSerializer(events, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
