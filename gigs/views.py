@@ -38,7 +38,7 @@ from .serializers_tour import TourSerializer
 from custom_auth.permissions import IsPremiumUser
 from chat.models import ChatRoom, Message
 from PIL import ImageFont, ImageDraw
-
+from datetime import datetime
 from custom_auth.models import ROLE_CHOICES, Venue, Artist, User, PerformanceTier
 from rt_notifications.utils import create_notification
 from utils.email import send_templated_email
@@ -272,70 +272,61 @@ def create_venue_event(request):
     user = request.user
 
     # Check if user is a venue
-    if not hasattr(user, 'venue') or not user.venue:
+    if not hasattr(user, 'venue_profile') or not user.venue_profile:
         return Response(
             {'detail': 'Only venue users with a valid venue can create venue events'},
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Create a mutable copy of the request data
+    venue = user.venue_profile  
+
     data = request.data.copy()
 
-    # Set required fields for venue event
     data['gig_type'] = GigType.VENUE_GIG
     data['status'] = Status.PENDING
-    data['venue'] = user.venue.id
+    data['venue'] = venue.id  
     data['created_by'] = user.id
 
-    # Set default values if not provided
     if 'title' not in data:
-        data['title'] = f"Event at {user.venue.venue_name}"
+        data['title'] = f"Event at {venue.venue_name}"
     if 'description' not in data:
-        data['description'] = f"Event hosted by {user.venue.venue_name}"
+        data['description'] = f"Event hosted by {venue.venue_name}"
 
-    # Handle file upload
     if 'flyer_image' in request.FILES:
         data['flyer_image'] = request.FILES['flyer_image']
 
-    # Validate capacity against venue limits
-    venue = user.venue
+
     max_artists = int(data.get('max_artists', 1))
     max_tickets = int(data.get('max_tickets', 1))
 
     if max_artists > venue.artist_capacity:
         return Response(
-            {'detail': f'Maximum artists cannot exceed venue capacity of {user.name} which is {venue.artist_capacity} artists'},
+            {'detail': f'Maximum artists cannot exceed venue capacity of {user.name}, which is {venue.artist_capacity} artists'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     if max_tickets > venue.capacity:
         return Response(
-            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.venue_name} which is {venue.capacity} people'},
+            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.venue_name}, which is {venue.capacity} people'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Use the VenueEventSerializer for validation
     serializer = VenueEventSerializer(data=data, context={'request': request})
 
     if serializer.is_valid():
-        # Save with the correct gig_type and venue
         gig = serializer.save(
             gig_type=GigType.VENUE_GIG,
-            venue=user.venue,
+            venue=venue,
             created_by=user
         )
 
-        # Create notification
         create_notification(
             user=user,
             notification_type='venue_event_created',
             message=f'Successfully created venue event: {gig.title}',
             **gig.__dict__
         )
-
-        # Use the GigDetailSerializer which includes all necessary fields
-        response_serializer = GigDetailSerializer(
-            gig, context={'request': request})
+        response_serializer = GigDetailSerializer(gig, context={'request': request})
 
         return Response({
             'status': 'success',
@@ -348,6 +339,7 @@ def create_venue_event(request):
         'errors': serializer.errors,
         'message': 'Validation error'
     }, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class LikeGigView(APIView):
@@ -1946,4 +1938,27 @@ def get_user_gigs(request):
 
 
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_event_by_date(request):
+    user = request.user
+
+    if not hasattr(user, 'venue_profile') or user.venue_profile is None:
+        return Response({"detail": "Only venue users can access this endpoint."},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    date_str = request.GET.get('date')
+    if not date_str:
+        return Response({"detail": "Date is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        venue = user.venue_profile 
+        events = Gig.objects.filter(venue=venue, event_date__date=date) 
+
+        serializer = GigSerializer(events, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
