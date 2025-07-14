@@ -283,7 +283,7 @@ def create_venue_event(request):
     data = request.data.copy()
 
     data['gig_type'] = GigType.VENUE_GIG
-    data['status'] = Status.PENDING
+    data['status'] = Status.APPROVED
     data['venue'] = venue.id  
     data['created_by'] = user.id
 
@@ -317,7 +317,8 @@ def create_venue_event(request):
         gig = serializer.save(
             gig_type=GigType.VENUE_GIG,
             venue=venue,
-            created_by=user
+            created_by=user,
+            status=data.get('status', Status.APPROVED)
         )
 
         create_notification(
