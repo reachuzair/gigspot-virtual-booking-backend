@@ -327,7 +327,7 @@ def create_venue_event(request):
             message=f'Successfully created venue event: {gig.title}',
             **gig.__dict__
         )
-        response_serializer = GigDetailSerializer(gig, context={'request': request})
+        response_serializer = GigSerializer(gig, context={'request': request})
 
         return Response({
             'status': 'success',
@@ -1958,7 +1958,7 @@ def get_event_by_date(request):
         venue = user.venue_profile 
         events = Gig.objects.filter(venue=venue, event_date__date=date) 
 
-        serializer = GigSerializer(events, many=True)
+        serializer = GigDetailSerializer(events, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
