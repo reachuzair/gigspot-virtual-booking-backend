@@ -38,8 +38,8 @@ class StripeConnectView(APIView):
         logger.info(f"[Stripe] User {user.id} has no artist profile")
             
         # If no artist account, check venue profile
-        if hasattr(user, 'venue'):
-            venue = user.venue
+        if hasattr(user, 'venue_profile'):
+            venue = user.venue_profile
             logger.info(f"[Stripe] User has venue profile: {venue.id}")
             
             # Check if venue has stripe_account_id attribute
