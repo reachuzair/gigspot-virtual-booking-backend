@@ -656,7 +656,7 @@ def initiate_gig(request):
             )
 
         # Safely get request data
-        data = dict(request.data) if hasattr(request, 'data') else {}
+        data = request.data.copy() if hasattr(request, 'data') else {}
         venue_id = data.get('venue_id')
 
         if not venue_id:
@@ -675,7 +675,7 @@ def initiate_gig(request):
 
         # Prepare data for serializer
         serializer_data = {
-            'venue': venue.id,
+            'venue_id': venue.id,
             'created_by': user.id,
             'max_artist': data.get('max_artist', venue.artist_capacity),
             **{k: v for k, v in data.items() if k != 'venue_id'}

@@ -81,7 +81,11 @@ class GigSerializer(serializers.ModelSerializer):
     is_part_of_tour = serializers.BooleanField(read_only=True)
     tour = serializers.PrimaryKeyRelatedField(queryset=Tour.objects.all(), required=False, allow_null=True)
     tour_order = serializers.IntegerField(required=False, allow_null=True)
-    # venue_id=serializers.PrimaryKeyRelatedField(queryset=Venue.objects.all())
+    venue_id = serializers.PrimaryKeyRelatedField(
+    source='venue',
+    queryset=Venue.objects.all(),
+    write_only=True
+)
     venue = VenueSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
     likes_count = serializers.SerializerMethodField()
@@ -97,7 +101,7 @@ class GigSerializer(serializers.ModelSerializer):
             'max_artists', 'max_tickets', 'ticket_price', 'venue_fee','collaborators',
             'invitees', 'likes', 'likes_count',
             'status', 'is_public', 'sold_out', 'slot_available', 'price_validation',
-            'request_message', 'expires_at', 'created_at', 'updated_at',#'venue_id',
+            'request_message', 'expires_at', 'created_at', 'updated_at','venue_id',
 
             # Related fields
 
