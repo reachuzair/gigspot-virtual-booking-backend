@@ -210,7 +210,6 @@ def forgot_password(request):
 
     return Response({"detail": "OTP sent successfully"}, status=status.HTTP_200_OK)
 
-
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
@@ -227,33 +226,39 @@ def change_password(request):
     if not user.check_password(old_password):
         return Response({"detail": "Invalid old password"}, status=status.HTTP_400_BAD_REQUEST)
 
+    if user.check_password(password):
+        return Response({"detail": "New password cannot be the same as the old password"}, status=status.HTTP_400_BAD_REQUEST)
+
     user.set_password(password)
     user.save()
 
     return Response({"detail": "Password changed successfully"}, status=status.HTTP_200_OK)
 
-
 @api_view(['PUT'])
 @permission_classes([AllowAny])
 def reset_password(request):
-    # Get data from the request
     new_password = request.data.get('new_password')
     email = request.data.get('email')
 
     if not new_password or not email:
         return Response(
-            {"detail": ("new password, email are required")},
+            {"detail": "new password and email are required"},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     try:
         user = User.objects.get(email=email)
 
+        if user.check_password(new_password):
+            return Response({"detail": "New password cannot be the same as the old password"}, status=status.HTTP_400_BAD_REQUEST)
+
         user.set_password(new_password)
         user.save()
         return Response({"message": "Password reset successful"}, status=status.HTTP_200_OK)
+
     except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         return Response({"detail": "Invalid user"}, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
