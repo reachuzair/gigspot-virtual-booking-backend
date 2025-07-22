@@ -5,7 +5,7 @@ from .stripe_connect import (
     PayoutView,
     OnboardingStatusView
 )
-from .views import capture_payment_intent, create_payment_intent, get_purchased_tickets_detail, list_tickets
+from .views import capture_payment_intent, create_payment_intent, get_purchased_tickets_detail, handle_contract_signature, list_tickets
 from .webhooks import stripe_webhook
 
 urlpatterns = [
@@ -30,4 +30,5 @@ urlpatterns = [
     path('capturePaymentIntent/',
          capture_payment_intent, name='create-payment-intent'),
     path('ticket-details/<int:gig_id>/', get_purchased_tickets_detail, name='get_purchased_tickets_details'),
+    path('handle-payment-intent-succeeded/',handle_contract_signature,name='handle-payment-intent-succeeded'),
 ]

@@ -13,7 +13,7 @@ from payments.utils import create_stripe_account
 from django.db import transaction
 from django.contrib.auth.backends import ModelBackend
 import logging
-
+from rest_framework_simplejwt.tokens import RefreshToken
 logger = logging.getLogger(__name__)
 
 
@@ -157,6 +157,13 @@ def resend_otp(request, email):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
+    """
+    Email / password login.
+    Returns:
+      • JWT refresh token
+      • JWT access token
+      • Serialized user object
+    """
     try:
         email = request.data.get('email', '').strip().lower()
         password = request.data.get('password')
@@ -171,13 +178,18 @@ def login_view(request):
         if not user.email_verified:
             return Response({"detail": "Email not verified"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not hasattr(user, 'backend') or user.backend is None:
-            user.backend = ModelBackend.__module__ + '.' + ModelBackend.__name__
+        if not getattr(user, 'backend', None):
+            user.backend = f"{ModelBackend.__module__}.{ModelBackend.__name__}"
 
-        login(request, user)
+        login(request, user)  
+
+        # Create JWTs
+        refresh = RefreshToken.for_user(user)
 
         return Response({
             "detail": "Login successful",
+            "refresh": str(refresh),                 # long‑lived token
+            "access": str(refresh.access_token),     # short‑lived token
             "user": UserSerializer(user).data
         }, status=status.HTTP_200_OK)
 

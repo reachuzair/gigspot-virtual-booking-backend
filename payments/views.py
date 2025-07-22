@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP, Decimal
 import logging
 import json
 from decimal import Decimal
-from datetime import datetime
+import datetime
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 from django.db import transaction
@@ -1000,3 +1000,69 @@ def capture_payment_intent(request):
         return Response({'detail': f'Unexpected error: {str(e)}'}, status=500)
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def handle_contract_signature(request):
+    """
+    Handle contract signature payment intent.
+    
+    This endpoint is called when a contract signature payment intent succeeds.
+    It updates the contract status and notifies the involved parties.
+    
+    Request body:
+    {
+        "payment_intent_id": "pi_xxx"
+    }
+    """
+    payment_intent_id = request.data.get('payment_intent_id')
+    
+    if not payment_intent_id:
+        return Response({'error': 'payment_intent_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Retrieve the payment intent
+        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        
+        # Check if the payment was successful
+        if payment_intent.status != 'succeeded':
+            return Response({'error': 'Payment intent not successful'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Handle the contract signature logic here
+        # For example, update the contract status in your database
+        metadata=payment_intent.get('metadata', {})
+        logger.info(f"[Stripe Webhook] Handling contract signature for payment intent {payment_intent_id} with metadata: {metadata}")
+        contract_id = metadata['contract_id']
+        contract = Contract.objects.get(id=contract_id)
+        contract.is_paid = True
+        contract.save()
+        
+        if metadata['is_host'] == 'true':
+            contract.artist_signed = True
+            contract.artist_signed_at = datetime.datetime.now()
+            contract.save()
+        else:
+            gig = contract.gig
+            artist = contract.artist
+            if artist.id in gig.invitees.values_list('id', flat=True):
+                contract.artist_signed = True
+                contract.artist_signed_at = datetime.datetime.now()
+                contract.save()
+                gig.invitees.remove(artist)
+                gig.collaborators.add(artist.id)
+                gig.save()
+            else:
+                contract.collaborator_signed = True
+                contract.collaborator_signed_at = datetime.datetime.now()
+                contract.save()
+                gig.collaborators.add(artist.id)
+                gig.save()
+        
+        return Response({'status': 'success', 'message': 'Contract signature processed successfully'}, status=status.HTTP_200_OK)
+    
+    except stripe.error.StripeError as e:
+        logger.error(f'Stripe error: {str(e)}')
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        logger.error(f'Unexpected error: {str(e)}', exc_info=True)
+        return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

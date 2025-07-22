@@ -104,7 +104,13 @@ def handle_payment_success(payment_intent):
         
         logger.info(f'Handling successful payment for intent: {payment_intent_id}')
         logger.info(f'Payment metadata: {metadata}')
-        
+        if metadata.get('payment_intent_for') == 'contract_signature':
+            logger.info('Processing contract signature payment')
+            from .helpers import handle_payment_intent_succeeded
+            handle_payment_intent_succeeded(payment_intent)
+            # Handle contract signature payment logic here
+            # For example, update contract status, notify parties, etc.
+            
         # Check if this is a ticket purchase
         if metadata.get('payment_intent_for') == 'ticket_purchase':
             logger.info('Processing ticket purchase payment')
