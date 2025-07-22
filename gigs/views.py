@@ -199,26 +199,10 @@ class GigDetailView(APIView):
     permission_classes = []  # Handle authentication manually
 
     def get(self, request, id):
-        user = request.user if request.user.is_authenticated else None
-
         try:
             gig = Gig.objects.get(id=id)
-
-            # Check visibility rules
-            if not self._can_view_gig(user, gig):
-                if user and user.is_authenticated:
-                    return Response(
-                        {'detail': 'You do not have permission to view this gig'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
-                return Response(
-                    {'detail': 'Authentication credentials were not provided.'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
             serializer = GigDetailSerializer(gig, context={'request': request})
             return Response(serializer.data)
-
         except Gig.DoesNotExist:
             return Response(
                 {'detail': 'Gig not found'},
@@ -429,12 +413,16 @@ class UpcomingGigsView(generics.ListAPIView):
         artist_id = self.kwargs.get('artist_id')
 
         queryset = Gig.objects.filter(event_date__gte=now, status='approved')
+
         if user.role == ROLE_CHOICES.FAN and artist_id:
             queryset = queryset.filter(
-                collaborators__id=artist_id
-            ) | queryset.filter(
-                created_by__id=artist_id
+                Q(collaborators__id=artist_id) |
+                Q(created_by__id=artist_id)
             )
+
+        queryset = queryset.exclude(
+            Q(created_by=user) | Q(collaborators=user)
+        )
 
         return queryset.distinct().order_by('event_date')
 
@@ -730,6 +718,11 @@ def add_gig_type(request, id):
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+    if timezone.now() > gig.created_at + timedelta(minutes=10):
+        gig.status = 'TIMED_OUT'
+        gig.save()
+        return Response({'detail': 'Gig creation timed out. Please start again.'},
+                        status=status.HTTP_408_REQUEST_TIMEOUT)
     try:
         gig.is_public = is_public
         gig.save()
@@ -759,8 +752,14 @@ def add_gig_details(request, id):
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
         return Response(f'Gig with ID {id} not found.', status=status.HTTP_404_NOT_FOUND)
+    
     except Exception as e:
         return Response(f'Error fetching gig: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if timezone.now() > gig.created_at + timedelta(minutes=10):
+        gig.status = 'TIMED_OUT'
+        gig.save()
+        return Response({'detail': 'Gig creation timed out. Please start again.'},
+                        status=status.HTTP_408_REQUEST_TIMEOUT)
 
     data = request.data.copy()
 
@@ -1123,7 +1122,7 @@ def get_contract(request, contract_id):
     elif user.role == ROLE_CHOICES.ARTIST:
         try:
             artist = Artist.objects.get(user=user)
-            contract = Contract.objects.get(id=contract_id, artist=artist)
+            contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
             return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
     else:
@@ -1145,7 +1144,7 @@ def get_contract_by_gig(request, gig_id):
         artist = Artist.objects.get(user=user)
         gig = Gig.objects.get(id=gig_id)
         contracts = Contract.objects.filter(
-            gig=gig, artist=artist).order_by('-created_at')
+            gig=gig).order_by('-created_at')
 
         if not contracts.exists():
             return Response({'detail': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1180,7 +1179,7 @@ def sign_contract(request, contract_id):
     try:
         if user.role == ROLE_CHOICES.ARTIST:
             artist = Artist.objects.get(user=user)
-            contract = Contract.objects.get(id=contract_id, artist=artist)
+            contract = Contract.objects.get(id=contract_id)
             contract.artist_signed = True
         elif user.role == ROLE_CHOICES.VENUE:
             venue = Venue.objects.get(user=user)
@@ -1234,7 +1233,7 @@ def sign_contract(request, contract_id):
                 "initiated_by_user": str(user.id),
             }
         )
-
+        logger.info(f"PaymentIntent created: {intent.id} for contract {contract.id}")
         return Response({
             "client_secret": intent.client_secret,
             "payment_intent_id": intent.id

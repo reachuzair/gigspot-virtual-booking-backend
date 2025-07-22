@@ -2,6 +2,7 @@
 Unified views for handling all subscription-related functionality.
 Combines endpoints for both artist and venue subscriptions.
 """
+from datetime import datetime
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,19 +14,20 @@ from django.conf import settings
 import stripe
 import json
 from django.db.models import Max
-
+from  django.http import Http404
+from rest_framework.generics import CreateAPIView, ListAPIView
 
 from custom_auth.models import Artist, Venue
 from .models import (
-    SubscriptionPlan, ArtistSubscription,
-    VenueAdPlan, VenueSubscription
+    PromotionPurchase, SubscriptionPlan, ArtistSubscription,
+    VenueAdPlan, VenuePromotionPlan, VenueSubscription
 )
 from .serializers import (
-    SubscriptionPlanSerializer, ArtistSubscriptionSerializer,
+    PromotionPurchaseSerializer, SubscriptionPlanSerializer, ArtistSubscriptionSerializer,
     VenueAdPlanSerializer, VenueSubscriptionSerializer,
     CreateVenueSubscriptionSerializer, SubscriptionPlanResponseSerializer
 )
-from .services import SubscriptionService
+from .services import PromotionService, SubscriptionService
 from .base_views import BaseSubscriptionView
 
 # Initialize Stripe
@@ -424,6 +426,170 @@ class VenueSubscriptionView(BaseSubscriptionView):
     def get_active_subscription(self, user):
         """Get the active subscription for a venue."""
         return getattr(user.venue_profile, 'subscription', None)
+
+class PromotionPlansView(APIView):
+    """
+    API endpoint to fetch all active promotion plans from Stripe (and optionally from local DB).
+    """
+    permission_classes = []
+
+    def _get_stripe_promotion_plans(self):
+        try:
+            products = stripe.Product.list(active=True, limit=100)
+            prices = stripe.Price.list(active=True, limit=100)
+
+            price_map = {}
+            for price in prices.auto_paging_iter():
+                if price.product not in price_map:
+                    price_map[price.product] = []
+                price_map[price.product].append(price)
+
+            promo_plans = []
+            for product in products.auto_paging_iter():
+                if product.metadata.get('type') != 'promotion':
+                    continue
+
+                for price in price_map.get(product.id, []):
+                    interval = price.recurring.interval if hasattr(price, 'recurring') and price.recurring else 'one_time'
+                    promo_plans.append({
+                        'id': price.id,
+                        'product_id': product.id,
+                        'name': product.name,
+                        'description': product.description or '',
+                        'amount': price.unit_amount / 100 if price.unit_amount else 0,
+                        'currency': price.currency.upper(),
+                        'interval': interval,
+                        'metadata': dict(price.metadata) if hasattr(price, 'metadata') else {}
+                    })
+
+            return promo_plans
+
+        except stripe.error.StripeError as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error fetching Stripe promotion plans: {str(e)}", exc_info=True)
+            return []
+
+    def get(self, request):
+        stripe_plans = self._get_stripe_promotion_plans()
+
+        # Optional: Merge with local DB plans
+        db_plans = VenuePromotionPlan.objects.filter(is_active=True)
+        serialized_db_plans = [
+            {
+                "id": f"local_{plan.id}",
+                "name": plan.name,
+                "description": plan.description,
+                "amount": float(plan.amount),
+                "currency": "USD",
+                "interval": plan.interval,
+                "stripe_price_id": plan.stripe_price_id
+            }
+            for plan in db_plans
+        ]
+
+        return Response({
+            'stripe_plans': stripe_plans,
+            'local_db_plans': serialized_db_plans
+        }, status=status.HTTP_200_OK)
+
+class PromotionPurchaseView(CreateAPIView, ListAPIView):
+    """
+    Create or list promotion purchases for the authenticated user’s venue.
+    
+    POST → create a new purchase (one‑time PaymentIntent or recurring Subscription)
+    GET  → list previous purchases for the current venue
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class   = PromotionPurchaseSerializer
+    queryset           = PromotionPurchase.objects.none()  # overridden below
+    plan_model         = VenuePromotionPlan
+    def _get_current_venue(self):
+        """
+        Helper to get the current user's venue profile.
+        """
+        user = self.request.user
+        if not hasattr(user, "venue_profile"):
+            raise Http404("User does not have a venue profile")
+        return user.venue_profile
+    def get_queryset(self):
+        """
+        Return only the most recent promotion purchase by this venue.
+        """
+        venue = self._get_current_venue()
+        latest_purchase = (
+            PromotionPurchase.objects
+            .filter(venue=venue)
+            .order_by("-purchased_at")
+            .first()
+        )
+        return PromotionPurchase.objects.filter(id=latest_purchase.id) if latest_purchase else PromotionPurchase.objects.none()
+
+    # ――― helpers ──────────────────────────────────────────────────────────
+    def create(self, request, *args, **kwargs):
+        """
+        Create a promotion purchase (one-time or recurring).
+        """
+        user = request.user
+        venue = self._get_current_venue()
+        plan_id = request.data.get("plan_id")
+        payment_method_id = request.data.get("payment_method_id")
+
+        if not plan_id:
+            return Response({"detail": "plan_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Look up plan by Stripe price ID
+            plan = VenuePromotionPlan.objects.get(stripe_price_id=plan_id)
+        except VenuePromotionPlan.DoesNotExist:
+            return Response({"detail": "Promotion plan not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            if plan.interval == "one_time":
+                stripe_object, client_secret = PromotionService.create_payment_intent(
+                    user=user,
+                    amount_cents=int(plan.amount * 100),
+                    payment_method_id=payment_method_id,
+                    description=f"Promo: {plan.name}"
+                )
+            else:
+                stripe_object, client_secret = PromotionService.create_subscription(
+                    user=user,
+                    price_id=plan.stripe_price_id,
+                    payment_method_id=payment_method_id
+                )
+        except stripe.error.StripeError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Save locally
+        purchase = PromotionPurchase.objects.create(
+            user=user,
+            venue=venue,
+            promotion_plan=plan,
+            stripe_session_id=stripe_object.id,
+            is_paid=False  # Will be marked True in webhook
+        )
+
+        # Standardized response
+        return Response({
+            "subscription_id": str(purchase.id),
+            "client_secret": client_secret,
+            "status": stripe_object.status if hasattr(stripe_object, 'status') else "pending",
+            "message": "Promotion created successfully",
+            "subscription": {
+                "id": str(purchase.id),
+                "status": stripe_object.status,
+                "plan": {
+                    "id": plan.stripe_price_id,
+                    "name": plan.name,
+                    "price": f"{plan.amount:.2f}"
+                },
+                "current_period_end": datetime.fromtimestamp(
+                    stripe_object.current_period_end, tz=timezone.utc
+                ).isoformat() if plan.interval != "one_time" else None
+            }
+        }, status=status.HTTP_201_CREATED)
+
 
 
 class BasePlanView(APIView):

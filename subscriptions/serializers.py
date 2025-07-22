@@ -3,8 +3,8 @@ from rest_framework import serializers
 from django.utils import timezone
 from datetime import timedelta
 from .models import (
-    SubscriptionPlan, ArtistSubscription,
-    VenueAdPlan, VenueSubscription
+    PromotionPurchase, SubscriptionPlan, ArtistSubscription,
+    VenueAdPlan, VenuePromotionPlan, VenueSubscription
 )
 
 class SubscriptionPlanResponseSerializer(serializers.Serializer):
@@ -128,3 +128,23 @@ class CreateVenueSubscriptionSerializer(serializers.Serializer):
         )
         
         return subscription
+    
+class VenuePromotionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VenuePromotionPlan
+        fields = ['id', 'name', 'description', 'amount', 'interval', 'stripe_price_id']
+
+
+class PromotionPurchaseSerializer(serializers.ModelSerializer):
+    promotion_plan = VenuePromotionPlanSerializer(read_only=True)
+
+    class Meta:
+        model = PromotionPurchase
+        fields = [
+            'id',
+            'promotion_plan',
+            'purchased_at',
+            'is_paid',
+            'stripe_session_id',
+        ]
+        read_only_fields = fields

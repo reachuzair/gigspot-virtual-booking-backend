@@ -51,7 +51,7 @@ class ArtistSerializer(serializers.ModelSerializer):
         fields = [
             'is_invited',
             'logo',  # Assuming logo is the profile image
-            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked','stripe_account_id'
+            'id', 'userId', 'artistName', 'createdAt', 'updatedAt', 'bannerImage','artistGenre','likes','is_liked','stripe_account_id','band_email','band_name','city','state',
         ]
         extra_kwargs = {field: {'required': True} for field in fields if field != 'id'}
 

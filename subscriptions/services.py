@@ -319,3 +319,141 @@ class SubscriptionService:
         subscription.save(update_fields=['plan', 'updated_at'])
         
         return subscription
+    
+
+
+import stripe
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone as dj_tz
+from datetime import datetime, timezone
+
+from .models import (
+    VenuePromotionPlan,
+    PromotionPurchase,
+    VenueSubscription,   # already imported above
+    ArtistSubscription,
+    SubscriptionStatus,
+)
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# small shared helper, re‑uses SubscriptionService logic to fetch / create a
+# Stripe customer and attach a PM if needed
+# ──────────────────────────────────────────────────────────────────────────────
+def _get_or_create_stripe_customer_for_user(user, payment_method_id=None):
+    """
+    Wrapper around SubscriptionService.create_stripe_customer, but without
+    hard‑coding 'artist' vs 'venue'. Promotions always belong to a *venue*
+    profile, so we pass subscription_type='venue'.
+    """
+    return SubscriptionService.create_stripe_customer(
+        user=user,
+        payment_method_id=payment_method_id,
+        subscription_type='venue',
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# promotion‑specific service
+# ──────────────────────────────────────────────────────────────────────────────
+class PromotionService:
+    """Service for one‑time or weekly venue promotion purchases."""
+
+    CURRENCY = "usd"
+
+    # ── ONE‑TIME PAYMENTINTENT ───────────────────────────────────────────────
+    @classmethod
+    def create_payment_intent(cls, user, amount_cents, payment_method_id=None, description=""):
+        import stripe
+        from django.conf import settings
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        payment_intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency="usd",
+            automatic_payment_methods={
+                "enabled": True,
+                "allow_redirects": "never"
+            },
+            customer=user.venue_profile.subscription.stripe_customer_id if hasattr(user, 'venue_profile') and hasattr(user.venue_profile, 'subscription') else None,
+            payment_method=payment_method_id,
+            metadata={
+                "user_id": user.id
+            },
+            description=description
+        )
+
+        return payment_intent, payment_intent.client_secret
+
+
+    # ── WEEKLY (RECURRING) SUBSCRIPTION ──────────────────────────────────────
+    @classmethod
+    def create_subscription(
+        cls,
+        user,
+        price_id: str,
+        payment_method_id: str | None = None,
+    ):
+        """
+        Create a *recurring weekly* Stripe Subscription for a promotion.
+
+        Returns:
+            tuple: (subscription, client_secret)
+        """
+        customer = _get_or_create_stripe_customer_for_user(user, payment_method_id)
+
+        subscription = stripe.Subscription.create(
+            customer=customer.id,
+            items=[{"price": price_id}],
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+            expand=["latest_invoice.payment_intent"],
+            metadata={
+                "type": "promotion",
+                "user_id": user.id,
+            },
+        )
+
+        logger.info(
+            "Created weekly promotion subscription",
+            extra={
+                "sub": subscription.id,
+                "user": user.id,
+                "price": price_id,
+            },
+        )
+
+        intent = subscription.latest_invoice.payment_intent
+        client_secret = (
+            intent.client_secret if intent and hasattr(intent, "client_secret") else None
+        )
+        return subscription, client_secret
+
+    # ── MARK PURCHASE PAID (call from webhook) ───────────────────────────────
+    @classmethod
+    def mark_purchase_paid(cls, stripe_session_id: str):
+        """
+        When a Stripe webhook confirms payment, mark the PromotionPurchase
+        as paid. Call this from your webhook handler.
+        """
+        try:
+            purchase = PromotionPurchase.objects.get(
+                stripe_session_id=stripe_session_id
+            )
+            if not purchase.is_paid:
+                purchase.is_paid = True
+                purchase.save(update_fields=["is_paid"])
+                logger.info(
+                    "Marked promotion purchase as paid",
+                    extra={"purchase_id": purchase.id, "session": stripe_session_id},
+                )
+        except PromotionPurchase.DoesNotExist:
+            logger.warning(
+                "Stripe webhook for unknown promotion purchase",
+                extra={"session": stripe_session_id},
+            )
