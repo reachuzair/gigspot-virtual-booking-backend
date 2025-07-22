@@ -1197,10 +1197,13 @@ def sign_contract(request, contract_id):
     # Handle artist payment intent
     if user.role == ROLE_CHOICES.ARTIST:
         collaborators = list(contract.gig.collaborators.all())
-        if user not in collaborators:
+        if user not in collaborators and user != contract.gig.created_by:
             collaborators.append(user)
+            total_artists = len(collaborators)
+        else:
+            total_artists = 1
 
-        total_artists = len(collaborators)
+        
 
         if total_artists == 1:
             reason = "Only one artist involved. Full amount sent to venue."

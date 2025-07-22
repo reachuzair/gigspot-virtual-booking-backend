@@ -42,7 +42,7 @@ ALLOWED_HOSTS = [
     'chilly-taxis-wear.loca.lt'
     'gigspot-ws-alb-1735954155.eu-north-1.elb.amazonaws.com',
     'socket.gigspotvb.com',
-    'e5ffdc5cca50.ngrok-free.app',
+    '2c12eb55c989.ngrok-free.app',
     '16.170.112.72'
 ]
 
@@ -138,9 +138,17 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+}
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
