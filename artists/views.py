@@ -68,15 +68,15 @@ def list_artists(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_artist(request, artist_id):
+def get_artist(request, user_id):
     try:
-        artist = Artist.objects.get(id=artist_id)
+        artist = Artist.objects.get(user_id=user_id)
     except Artist.DoesNotExist:
         return Response({'detail': 'Artist not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    artist_serializer = ArtistSerializer(artist)
-    response_data = artist_serializer.data
-    return Response(response_data)
+    serializer = ArtistSerializer(artist, context={'request': request})
+    return Response(serializer.data)
+
 
 class ArtistAnalyticsView(APIView):
     """

@@ -4,6 +4,10 @@ from django.conf import settings
 from datetime import datetime
 from django.utils.translation import gettext_lazy as _
 
+import custom_auth
+
+
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
@@ -298,6 +302,28 @@ class VenueSubscription(models.Model):
         
         self.save()
         return self
+class VenuePromotionPlan(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=8, decimal_places=2)
+    interval = models.CharField(max_length=20, choices=[
+        ('one_time', 'One-Time'),
+        ('week', 'Weekly')
+    ])
+    stripe_product_id = models.CharField(max_length=100, blank=True, null=True)
+    stripe_price_id = models.CharField(max_length=100, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+class PromotionPurchase(models.Model):
+    user = models.ForeignKey('custom_auth.User', on_delete=models.CASCADE)
+    venue = models.ForeignKey('custom_auth.Venue', on_delete=models.CASCADE)
+    promotion_plan = models.ForeignKey(VenuePromotionPlan, on_delete=models.SET_NULL, null=True)
+    purchased_at = models.DateTimeField(auto_now_add=True)
+    stripe_session_id = models.CharField(max_length=255, blank=True, null=True)
+    is_paid = models.BooleanField(default=False)
+
 
 class ArtistSubscription(models.Model):
     """

@@ -13,6 +13,7 @@ from django.core.cache import cache
 
 from subscriptions.models import SubscriptionPlan
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -1627,19 +1628,47 @@ class Venue(models.Model):
         
         return dirty_fields
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_state = {
+            field.name: getattr(self, field.name)
+            for field in self._meta.fields
+        }
+
     def save(self, *args, **kwargs):
-        # Check if capacity has changed
-        if hasattr(self, '_original_state') and 'capacity' in self._original_state:
-            if self._original_state['capacity'] != self.capacity:
-                # Capacity has changed, update the tier
+        """
+        • Updates the tier when capacity changes
+        • Auto-sets `is_completed` based on required fields
+        """
+
+        if hasattr(self, "_original_state") and "capacity" in self._original_state:
+            if self._original_state["capacity"] != self.capacity:
                 self.tier = VenueTier.get_tier_for_capacity(self.capacity)
-        
-        # Save the model
+
+        # Check required fields
+        required_ok = all([
+            bool(self.reservation_fee),
+            bool(self.artist_capacity),
+            bool(self.phone_number),
+            bool(self.capacity),
+            bool(self.address),
+            bool(self.city),
+            bool(self.state),
+            bool(self.phone_number),
+            bool(self.amenities),
+            self.capacity > 0,
+            self.artist_capacity > 0,
+            bool(self.logo),
+            bool(self.proof_document or self.proof_url),
+        ])
+
+        self.is_completed = required_ok
+
         super().save(*args, **kwargs)
-        
-        # Clean up
-        if hasattr(self, '_original_state'):
-            delattr(self, '_original_state')
+
+        if hasattr(self, "_original_state"):
+            delattr(self, "_original_state")
+
     
     def get_eligible_artist_tiers(self):
         """Get list of artist tiers that can perform at this venue"""

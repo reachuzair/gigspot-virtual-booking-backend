@@ -24,6 +24,7 @@ class Status(models.TextChoices):
     PENDING = 'pending', 'Pending'
     APPROVED = 'approved', 'Approved'
     REJECTED = 'rejected', 'Rejected'
+    TIMED_OUT = 'timed_out', 'Timed Out'
 
 
 class GenreChoices(models.TextChoices):

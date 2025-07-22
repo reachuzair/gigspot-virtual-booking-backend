@@ -8,13 +8,18 @@ import django_filters
 from django.db.models import Count, F, ExpressionWrapper, fields, Q, Sum, Case, When, IntegerField
 from django.db.models.functions import TruncDate, TruncMonth, TruncDay
 from django.utils import timezone
-from datetime import datetime, timedelta
-
+from datetime import date, datetime, time, timedelta
+from rest_framework.parsers import MultiPartParser, FormParser
 from custom_auth.models import Venue, User
 from users.serializers import VenueProfileSerializer
 from gigs.models import Gig, Status
 from payments.models import Ticket
-
+from venues.models import VenueProof
+from venues.serializers import VenueProofSerializer
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
+from django.utils.timezone import make_aware
+from calendar import monthrange
 class VenueFilter(django_filters.FilterSet):
     """
     FilterSet for Venue model with city and state filtering
@@ -53,7 +58,7 @@ class VenueListView(generics.ListAPIView):
     """
     List all venues with filtering and search capabilities
     """
-    queryset = Venue.objects.all().order_by('-created_at')
+    queryset = Venue.objects.filter(is_completed=True).order_by('-created_at')
     serializer_class = VenueProfileSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend]
     filterset_class = VenueFilter
@@ -298,3 +303,155 @@ class VenueAnalyticsView(APIView):
         # Ensure we don't exceed capacity
         max_capacity = gig.max_tickets or 100
         return min(attendance, max_capacity)
+
+
+class VenueProofUploadView(generics.CreateAPIView):
+    """
+    GET  → return the latest proof for the venue
+    POST → upload a new proof (document or URL)
+    """
+    serializer_class = VenueProofSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_user_venue(self):
+        venue = getattr(self.request.user, "venue_profile", None)
+        if not venue:
+            raise PermissionDenied("User is not linked to a venue.")
+        return venue
+
+    def perform_create(self, serializer):
+        venue = self._get_user_venue()
+        serializer.save(venue=venue)
+
+    def get(self, request, *args, **kwargs):
+        venue = self._get_user_venue()
+        latest_proof = VenueProof.objects.filter(venue=venue).order_by('-uploaded_at').first()
+
+        if not latest_proof:
+            return Response({"detail": "No proof uploaded yet."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(latest_proof)
+        return Response(serializer.data)
+    
+class TicketSalesAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        venue = Venue.objects.filter(user=request.user).first()
+        if not venue:
+            return Response({"detail": "Venue not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        gigs = Gig.objects.filter(venue=venue).order_by('-event_date').prefetch_related('tickets')
+
+        results = []
+        for gig in gigs:
+            sold_tickets = gig.tickets.filter(price__gt=0).count()
+            results.append({
+                "id": gig.id,
+                "flyer_image": gig.flyer_image.url if gig.flyer_image else None,
+                "event_title": gig.title,
+                "event_date": gig.event_date.strftime('%a, %d %b'),
+                "time": gig.event_date.strftime('%I:%M %p'),
+                "location": gig.venue.city if gig.venue else "",
+                "tickets_sold": sold_tickets,
+                "total_tickets": gig.max_tickets,
+            })
+
+        return Response({"results": results})
+
+class ArtistBillsAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        gigs = Gig.objects.filter(created_by=request.user, venue__isnull=False).select_related('venue')
+
+        results = []
+        for gig in gigs:
+            results.append({
+                "event_title": gig.title,
+                "venue_name": gig.venue.user.name if gig.venue and gig.venue.user else "N/A",
+                "paid_status": "paid",  # assuming always paid when gig is created
+                "amount": float(gig.venue_fee or 0),
+                "flyer_image": gig.flyer_image.url if gig.flyer_image else None,
+            })
+
+        return Response({"results": results})
+
+class GigDailySalesBreakdownAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, gig_id):
+        gig = get_object_or_404(Gig, id=gig_id)
+
+        # Get query parameters or fallback to current values
+        today = datetime.today()
+        month = int(request.query_params.get('month', today.month))
+        year = int(request.query_params.get('year', today.year))
+        week_number = int(request.query_params.get('week', 1))
+
+        # WEEKLY SALES (DAILY BREAKDOWN)
+        first_day_of_month = date(year, month, 1)
+        start_of_week = first_day_of_month + timedelta(days=(week_number - 1) * 7)
+        end_of_week = start_of_week + timedelta(days=6)
+
+        daily_sales = []
+        for i in range(7):
+            day_date = start_of_week + timedelta(days=i)
+            tickets_sold = Ticket.objects.filter(
+                gig=gig,
+                created_at__date=day_date
+            ).count()
+
+            daily_sales.append({
+                "day": day_date.day,
+                "tickets_sold": tickets_sold,
+                "total_tickets": gig.max_tickets
+            })
+
+        week_range = f"{start_of_week.strftime('%A')} {start_of_week.day} - {end_of_week.strftime('%A')} {end_of_week.day}"
+
+        weekly_sales = {
+            "gig_id": gig.id,
+            "title": gig.title,
+            "week_range": week_range,
+            "daily_sales": daily_sales
+        }
+
+        # MONTHLY SALES (WEEKLY BREAKDOWN)
+        days_in_month = monthrange(year, month)[1]
+
+        monthly_weekly_sales = []
+        for week_start_day in range(1, days_in_month + 1, 7):
+            start_date = date(year, month, week_start_day)
+            end_day = min(week_start_day + 6, days_in_month)
+            end_date = date(year, month, end_day)
+
+            start_datetime = make_aware(datetime.combine(start_date, time.min))
+            end_datetime = make_aware(datetime.combine(end_date, time.max))
+
+            tickets_sold = Ticket.objects.filter(
+                gig=gig,
+                created_at__range=(start_datetime, end_datetime)
+            ).count()
+
+            monthly_weekly_sales.append({
+                "week_number": (week_start_day - 1) // 7 + 1,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "tickets_sold": tickets_sold,
+                "total_tickets": gig.max_tickets
+            })
+
+        monthly_sales = {
+            "gig_id": gig.id,
+            "title": gig.title,
+            "month": first_day_of_month.strftime('%B'),
+            "weekly_sales": monthly_weekly_sales
+        }
+
+        # Final Combined Response
+        return Response({
+            "weekly": weekly_sales,
+            "monthly": monthly_sales
+        })

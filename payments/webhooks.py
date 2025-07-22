@@ -69,6 +69,7 @@ def stripe_webhook(request):
     
     try:
         if event_type == 'payment_intent.succeeded':
+            logger.info('Payment intent succeeded')
             handle_payment_success(event['data']['object'])
         elif event_type == 'payment_intent.payment_failed':
             handle_payment_failure(event['data']['object'])
