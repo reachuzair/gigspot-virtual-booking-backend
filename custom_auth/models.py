@@ -779,6 +779,11 @@ class Artist(models.Model):
         default=None,
         help_text="Stripe Connect account ID for payments"
     )
+    stripe_onboarding_link = models.URLField(
+    null=True,
+    blank=True,
+    help_text="Latest Stripe onboarding link for this venue"
+)
     stripe_onboarding_completed = models.BooleanField(
         default=False,
         help_text="Whether Stripe onboarding is completed"
@@ -1580,6 +1585,11 @@ class Venue(models.Model):
         default=None,
         help_text="Stripe Connect account ID for payments"
     )
+    stripe_onboarding_link = models.URLField(
+    null=True,
+    blank=True,
+    help_text="Latest Stripe onboarding link for this venue"
+)
     stripe_onboarding_completed = models.BooleanField(
         default=False,
         help_text="Whether Stripe onboarding is completed"
