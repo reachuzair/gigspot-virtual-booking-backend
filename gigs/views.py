@@ -1746,19 +1746,16 @@ def my_requests(request):
 def signed_events(request, contract_id=None):
     user = request.user
 
-    if hasattr(user, 'venue_profile'):
-        role_field = 'venue_profile'
-        role_obj = user.venue_profile
-    elif hasattr(user, 'artist_profile'):
-        role_field = 'artist_profile'
-        role_obj = user.artist_profile
+    # Determine whether user is artist or venue
+    if hasattr(user, 'venue_profile') and user.venue_profile:
+        role_filter = {'venue': user.venue_profile}
+    elif hasattr(user, 'artist_profile') and user.artist_profile:
+        role_filter = {'artist': user.artist_profile}
     else:
         return Response({'detail': 'Only artists or venues can view signed events.'}, status=403)
 
-    role_filter = {'venue' if role_field == 'venue' else 'artist': role_obj}
-    
     if contract_id:
-        # Detail view for single contract
+        # Detail view for single signed contract
         try:
             contract = Contract.objects.get(
                 id=contract_id,
@@ -1770,11 +1767,11 @@ def signed_events(request, contract_id=None):
             return Response({'detail': 'Signed event not found.'}, status=404)
 
         data = {
-                        'contract_id': contract.id,
+            'contract_id': contract.id,
             'gig_id': contract.gig.id,
             'gig_title': contract.gig.title,
-            'gig_type':contract.gig.gig_type,
-            'is_public':contract.gig.is_public,
+            'gig_type': contract.gig.gig_type,
+            'is_public': contract.gig.is_public,
             'event_date': contract.gig.event_date,
             'signed_at': contract.updated_at,
             'banner_image': contract.gig.flyer_image.url if contract.gig.flyer_image else None,
@@ -1783,11 +1780,11 @@ def signed_events(request, contract_id=None):
                 'id': contract.gig.created_by.id,
                 'name': contract.gig.created_by.name,
             }
-            
         }
         return Response({'signed_event': data})
+
     else:
-        # List view for all signed contracts
+        # List all signed contracts
         contracts = Contract.objects.filter(
             artist_signed=True,
             venue_signed=True,
@@ -1803,10 +1800,11 @@ def signed_events(request, contract_id=None):
                 'signed_at': contract.updated_at,
                 'banner_image': contract.gig.flyer_image.url if contract.gig.flyer_image else None,
                 'price': contract.price
-                
-            } for contract in contracts
+            }
+            for contract in contracts
         ]
         return Response({'signed_events': data})
+
 
 
 

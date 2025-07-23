@@ -72,8 +72,8 @@ def create_stripe_account(request, user, max_retries=3):
             # 4. Create onboarding link
             link = stripe.AccountLink.create(
                 account=account.id,
-                refresh_url=f"{settings.FRONTEND_URL}/dashboard/payments?tab=withdrawals",
-                return_url=f"{settings.FRONTEND_URL}/dashboard/payments?tab=withdrawals",
+                refresh_url=f"https://www.gigspotvb.com/",
+                return_url=f"https://www.gigspotvb.com/",
                 type="account_onboarding"
             )
             
