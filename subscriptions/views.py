@@ -16,7 +16,7 @@ import json
 from django.db.models import Max
 from  django.http import Http404
 from rest_framework.generics import CreateAPIView, ListAPIView
-
+from datetime import datetime, timezone
 from custom_auth.models import Artist, Venue
 from .models import (
     PromotionPurchase, SubscriptionPlan, ArtistSubscription,
@@ -585,8 +585,8 @@ class PromotionPurchaseView(CreateAPIView, ListAPIView):
                     "price": f"{plan.amount:.2f}"
                 },
                 "current_period_end": datetime.fromtimestamp(
-                    stripe_object.current_period_end, tz=timezone.utc
-                ).isoformat() if plan.interval != "one_time" else None
+    stripe_object.current_period_end, tz=timezone.utc
+).isoformat() if plan.interval != "one_time" else None
             }
         }, status=status.HTTP_201_CREATED)
 
