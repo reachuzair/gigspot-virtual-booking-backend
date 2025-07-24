@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_event_by_date, get_user_gigs, invited_list, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_requests, pending_venue_gigs,
+    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_event_by_date, get_user_gigs, invited_list, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_gigs, my_requests, pending_venue_gigs,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
@@ -20,6 +20,8 @@ gig_urls = [
     path('', list_gigs, name='list_gigs'),
     path('gigdetail/<int:id>/', GigDetailView.as_view(), name='list_gigs'),
     path('upcoming/', UpcomingGigsView.as_view(), name='upcoming_gigs'),
+     path('my-gigs/', my_gigs),
+    path('my-gigs/<int:gig_id>/', my_gigs),
     path('upcoming/<int:artist_id>/', UpcomingGigsView.as_view(), name='artist_upcoming_gigs'),
     path('<int:id>/', GigDetailView.as_view(), name='gig_detail'),
     path('event-history/', artist_event_history, name='event_history'),
