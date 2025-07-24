@@ -291,7 +291,7 @@ def create_venue_event(request):
 
     if max_tickets > venue.capacity:
         return Response(
-            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.venue_name}, which is {venue.capacity} people'},
+            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.name}, which is {venue.capacity} people'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -1812,23 +1812,34 @@ def signed_events(request, contract_id=None):
 @permission_classes([IsAuthenticated])
 def artist_event_history(request):
     user = request.user
-    if not hasattr(user, 'artist_profile'):
-        return Response({'detail': 'Only artists can access event history.'}, status=403)
 
-    artist_user = user
-    gigs = Gig.objects.filter(
-        event_date__lt=timezone.now()
-    ).filter(
-        Q(created_by=artist_user) | Q(collaborators=artist_user)
-    ).distinct().order_by('-event_date')
+    if hasattr(user, 'artist_profile'):
+        # Artist: past gigs created by or collaborated on
+        gigs = Gig.objects.filter(
+            event_date__lt=timezone.now()
+        ).filter(
+            Q(created_by=user) | Q(collaborators=user)
+        ).distinct().order_by('-event_date')
 
-    serializer = GigDetailSerializer(
-        gigs, many=True, context={'request': request})
+    elif hasattr(user, 'venue_profile'):
+        venue = user.venue_profile
+        # Venue: past gigs either created by or assigned to this venue
+        gigs = Gig.objects.filter(
+            event_date__lt=timezone.now()
+        ).filter(
+            Q(created_by=user) | Q(venue=venue)
+        ).distinct().order_by('-event_date')
 
+    else:
+        return Response({'detail': 'Only artists or venues can access event history.'}, status=403)
+
+    serializer = GigDetailSerializer(gigs, many=True, context={'request': request})
     return Response({
         "count": len(serializer.data),
         "events": serializer.data
     })
+
+
 
 
 @api_view(['GET'])
@@ -1962,4 +1973,52 @@ def get_event_by_date(request):
         return Response(serializer.data, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_gigs(request, gig_id=None):
+    user = request.user
+
+    # Ensure user is either artist or venue
+    if not hasattr(user, 'artist_profile') and not hasattr(user, 'venue_profile'):
+        return Response({'detail': 'Only artists or venues can view their gigs.'}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        if gig_id:
+            # Fetch gig by ID
+            gig = Gig.objects.get(id=gig_id)
+
+            # Role-based access control
+            if hasattr(user, 'artist'):
+                if gig.created_by == user or user in gig.collaborators.all():
+                    pass
+                else:
+                    return Response({'detail': 'Unauthorized to view this gig'}, status=403)
+            elif hasattr(user, 'venue_profile'):
+                if gig.gig_type == GigType.VENUE_GIG and gig.created_by == user:
+                    pass
+                else:
+                    return Response({'detail': 'Unauthorized to view this gig'}, status=403)
+
+            serializer = GigDetailSerializer(gig, context={'request': request})
+            return Response(serializer.data)
+
+        else:
+            # List all gigs based on role
+            if hasattr(user, 'artist_profile'):
+                gigs = Gig.objects.filter(
+                    Q(created_by=user) | Q(collaborators=user)
+                )
+            else:  # venue
+                gigs = Gig.objects.filter(
+                    created_by=user,
+                    gig_type=GigType.VENUE_GIG
+                )
+
+            gigs = gigs.order_by('-created_at').distinct()
+            serializer = GigSerializer(gigs, many=True, context={'request': request})
+            return Response(serializer.data)
+
+    except Gig.DoesNotExist:
+        return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
 
