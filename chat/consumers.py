@@ -25,17 +25,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.user = self.scope["user"]
             
             if self.user.is_anonymous:
-                await self.close(code=4003)  # Forbidden
+                await self.close(code=403)  # Forbidden
                 return
 
             # Validate room and permissions
             self.room = await self.get_room()
             if not self.room:
-                await self.close(code=4004)  # Room not found
+                await self.close(code=404)  # Room not found
                 return
 
             if not await self.is_user_participant():
-                await self.close(code=4003)  # Forbidden
+                await self.close(code=400)  # Forbidden
                 return
 
             self.room_group_name = f'chat_{self.room_id}'
