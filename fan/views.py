@@ -46,7 +46,8 @@ def featured_artists_view(request, id=None):
         serializer = ArtistSerializer(artist, context={'request': request})
         return Response(serializer.data, status=200)
 
-    artists = Artist.objects.filter(subscription_tier='PREMIUM') 
+    artists = Artist.objects.filter(subscription__plan__subscription_tier='PREMIUM')
+ 
     serializer = ArtistSerializer(artists, many=True, context={'request': request})
     return Response({"artists": serializer.data}, status=200)
 
@@ -54,21 +55,21 @@ def featured_artists_view(request, id=None):
 @permission_classes([IsAuthenticated])
 def featured_artist_with_events_view(request, id):
     try:
-        artist = get_object_or_404(Artist, id=id, subscription_tier='PREMIUM')
+        artist = get_object_or_404(
+            Artist.objects.filter(subscription__plan__subscription_tier='PREMIUM'),
+            id=id
+        )
 
         gigs = Gig.objects.filter(
             Q(created_by=artist.user) | Q(collaborators=artist.user),
             status='approved'
         ).distinct().order_by('-event_date')
 
-        
         artist_data = ArtistSerializer(artist, context={'request': request}).data
         gigs_data = GigDetailSerializer(gigs, many=True, context={'request': request}).data
         artist_data['events'] = gigs_data if gigs.exists() else []
 
-        return Response({
-            'artist': artist_data,
-        }, status=200)
+        return Response({'artist': artist_data}, status=200)
 
     except Exception as e:
         return Response({'detail': str(e)}, status=500)
