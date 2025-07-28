@@ -719,7 +719,7 @@ def add_gig_type(request, id):
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
     if timezone.now() > gig.created_at + timedelta(minutes=10):
-        gig.status = 'TIMED_OUT'
+        gig.status = Status.TIMED_OUT 
         gig.save()
         return Response({'detail': 'Gig creation timed out. Please start again.'},
                         status=status.HTTP_408_REQUEST_TIMEOUT)
@@ -756,7 +756,7 @@ def add_gig_details(request, id):
     except Exception as e:
         return Response(f'Error fetching gig: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if timezone.now() > gig.created_at + timedelta(minutes=10):
-        gig.status = 'TIMED_OUT'
+        gig.status = Status.TIMED_OUT
         gig.save()
         return Response({'detail': 'Gig creation timed out. Please start again.'},
                         status=status.HTTP_408_REQUEST_TIMEOUT)
