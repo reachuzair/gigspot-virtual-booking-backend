@@ -320,11 +320,18 @@ def create_venue_event(request):
             'message': 'Venue event created successfully'
         }, status=status.HTTP_201_CREATED)
 
-    return Response({
-        'status': 'error',
-        'errors': serializer.errors,
-        'message': 'Validation error'
-    }, status=status.HTTP_400_BAD_REQUEST)
+    # --- Generic error formatting ---
+    # If validation fails
+    errors = serializer.errors
+    first_key = next(iter(errors), None)
+    if first_key:
+        message = errors[first_key][0] if isinstance(errors[first_key], list) else errors[first_key]
+        field_name = str(first_key).replace('_', ' ').capitalize()
+        return Response({"detail": f"{message}"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Default fallback
+    return Response({"detail": "Validation failed"}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 
