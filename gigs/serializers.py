@@ -65,7 +65,11 @@ class TourSerializer(serializers.ModelSerializer):
         return attrs
 
 
-
+class ContractSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contract
+        fields = ['id', 'artist', 'venue', 'gig', 'price','venue_signed','artist_signed',
+                  'pdf', 'image', 'created_at', 'updated_at']
 class GigSerializer(serializers.ModelSerializer):
     """Serializer for Gig model with proper field handling and serialization."""
 
@@ -89,6 +93,8 @@ class GigSerializer(serializers.ModelSerializer):
     venue = VenueSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
     likes_count = serializers.SerializerMethodField()
+    venue_signed = serializers.SerializerMethodField()
+    artist_signed = serializers.SerializerMethodField()
     
 
     class Meta:
@@ -101,7 +107,7 @@ class GigSerializer(serializers.ModelSerializer):
             'max_artists', 'max_tickets', 'ticket_price', 'venue_fee','collaborators',
             'invitees', 'likes', 'likes_count',
             'status', 'is_public', 'sold_out', 'slot_available', 'price_validation',
-            'request_message', 'expires_at', 'created_at', 'updated_at','venue_id',
+            'request_message', 'expires_at', 'created_at', 'updated_at','venue_id','venue_signed','artist_signed',
 
             # Related fields
 
@@ -249,6 +255,14 @@ class GigSerializer(serializers.ModelSerializer):
         if flyer_bg:
             validated_data['flyer_image'] = flyer_bg
         return super().update(instance, validated_data)
+    def get_artist_signed(self, obj):
+        return Contract.objects.filter(gig=obj, artist_signed=True).exists()
+
+    def get_venue_signed(self, obj):
+        return Contract.objects.filter(gig=obj, venue_signed=True).exists()
+
+
+
 
 
 class GigInviteSerializer(serializers.ModelSerializer):
@@ -363,8 +377,4 @@ class VenueEventSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ContractSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Contract
-        fields = ['id', 'artist', 'venue', 'gig', 'price',
-                  'pdf', 'image', 'created_at', 'updated_at']
+

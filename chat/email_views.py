@@ -284,6 +284,16 @@ class ComposeEmailView(generics.CreateAPIView):
                 {'detail': 'Recipient is required to send an email'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if not is_draft and not mutable_data.get('subject'):
+            return Response(
+                {'detail': 'subject is required to send an email'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not is_draft and not mutable_data.get('body'):
+            return Response(
+                {'detail': 'body is required to send an email'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Check if this is a reply
         parent_id = mutable_data.get('parent_id')
@@ -307,7 +317,7 @@ class ComposeEmailView(generics.CreateAPIView):
                 mutable_data['thread'] = thread.id
             else:
                 return Response(
-                    {'error': 'Subject is required for drafts'},
+                    {'detail': 'Subject is required for drafts'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 

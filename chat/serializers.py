@@ -125,15 +125,22 @@ class EmailMessageSerializer(serializers.ModelSerializer):
         
     
     def validate(self, attrs):
-        attrs = super().validate(attrs)
+        errors = {}
+
         if not self.instance and not attrs.get('is_draft', False):
             if not attrs.get('to_recipients'):
-                raise serializers.ValidationError({"to_recipients": "Recipient is required"})
+                errors['to_recipients'] = 'Recipient is required to send an email'
             if not attrs.get('subject'):
-                raise serializers.ValidationError({"subject": "Subject is required"})
+                errors['subject'] = 'Subject is required'
             if not attrs.get('body'):
-                raise serializers.ValidationError({"body": "Message body is required"})
+                errors['body'] = 'Message body is required'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
         return attrs
+
+
 
     def create(self, validated_data):
         uploaded_files = validated_data.pop('uploaded_files', [])
