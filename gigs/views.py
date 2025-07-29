@@ -52,6 +52,7 @@ from .serializers import (
 )
 from .serializers_tour import TourVenueSuggestionSerializer, BookedVenueSerializer
 from .utils import PricingValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -745,16 +746,19 @@ def add_gig_details(request, id):
     user = request.user
 
     if user.role not in [ROLE_CHOICES.VENUE, ROLE_CHOICES.ARTIST]:
-        return Response("Unauthorized: only Venue or Artist can perform this action.",
-                        status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {"detail": "Unauthorized: only Venue or Artist can perform this action."},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
 
     try:
         gig = Gig.objects.get(id=id)
     except Gig.DoesNotExist:
-        return Response(f'Gig with ID {id} not found.', status=status.HTTP_404_NOT_FOUND)
-    
+        return Response({"detail": f'Gig with ID {id} not found.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response(f'Error fetching gig: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"detail": f'Error fetching gig: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Timeout logic
     if timezone.now() > gig.created_at + timedelta(minutes=10):
         gig.status = Status.TIMED_OUT
         gig.save()
@@ -766,31 +770,45 @@ def add_gig_details(request, id):
     if 'flyer_bg' in request.FILES:
         data['flyer_bg'] = request.FILES['flyer_bg']
 
+    # Validate max_tickets
     try:
         max_tickets = int(data.get('max_tickets', 0))
     except ValueError:
-        return Response('max_tickets must be an integer.', status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'max_tickets must be an integer.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if max_tickets <= 0:
-        return Response('max_tickets must be greater than zero.', status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'max_tickets must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Get venue and check capacity
     try:
         venue = Venue.objects.get(id=gig.venue_id)
     except Venue.DoesNotExist:
-        return Response(f'Venue with ID {gig.venue_id} not found.', status=status.HTTP_404_NOT_FOUND)
+        return Response({'detail': f'Venue with ID {gig.venue_id} not found.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response(f'Error fetching venue: {str(e)}', status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'detail': f'Error fetching venue: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     if max_tickets > venue.capacity:
-        return Response(f'Max tickets value ({max_tickets}) exceeds venue capacity ({venue.capacity}).',
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'detail': f'Max tickets value ({max_tickets}) exceeds venue capacity ({venue.capacity}).'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
+    # Auto-set artist capacity
     data['max_artist'] = venue.artist_capacity
 
+    # Serialize and save
     serializer = GigSerializer(
-        gig, data=data, partial=True, context={"request": request})
+        gig, data=data, partial=True, context={"request": request}
+    )
+
     if serializer.is_valid():
-        gig = serializer.save()
+        try:
+            gig = serializer.save()
+        except DjangoValidationError as e:
+            return Response(
+                {"detail": " ".join(e.messages)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         create_notification(request.user, 'system',
                             'Gig created successfully', **gig.__dict__)
         return Response({
@@ -798,11 +816,14 @@ def add_gig_details(request, id):
             'message': 'Gig created successfully'
         }, status=status.HTTP_201_CREATED)
 
+    # Handle errors — clean up __all__ to be generic
     error_messages = []
     for field, messages in serializer.errors.items():
-        label = "Error" if field == "__all__" else field
         for msg in messages:
-            error_messages.append(f"{label}: {msg}")
+            if field == "__all__":
+                error_messages.append(msg)  # Generic message
+            else:
+                error_messages.append(f"{field}: {msg}")
 
     return Response(" | ".join(error_messages), status=status.HTTP_400_BAD_REQUEST)
 
