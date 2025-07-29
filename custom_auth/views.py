@@ -29,7 +29,7 @@ def signup(request):
                 first_error = serializer.errors[first_key]
                 message = first_error[0] if isinstance(first_error, list) else str(first_error)
                 field_label = str(first_key).replace('_', ' ').capitalize()
-                return Response({"detail": f"{field_label}: {message}"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": f"{message}"}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": "Invalid data provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
