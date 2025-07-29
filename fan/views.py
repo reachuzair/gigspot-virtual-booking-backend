@@ -80,7 +80,7 @@ def featured_artist_with_events_view(request, id):
 def toggle_artist_like(request, id):
     try:
         user = request.user
-        artist = get_object_or_404(Artist, id=id, subscription_tier='PREMIUM')
+        artist = get_object_or_404(Artist, id=id)
 
         if artist.likes.filter(id=user.id).exists():
             artist.likes.remove(user)
