@@ -281,7 +281,7 @@ class ComposeEmailView(generics.CreateAPIView):
         # For drafts, we don’t require a recipient
         if not is_draft and not mutable_data.get('to_recipients'):
             return Response(
-                {'error': 'Recipient is required to send an email'},
+                {'detail': 'Recipient is required to send an email'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -450,7 +450,7 @@ class SendDraftView(APIView):
         # Validate required fields
         if not instance.to_recipients.exists():
             return Response(
-                {'error': 'Recipient is required to send an email'}, 
+                {'detail': 'Recipient is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not instance.subject:
@@ -508,17 +508,17 @@ class SendDraftView(APIView):
         # Validate required fields
         if not instance.to_recipients.exists():
             return Response(
-                {'error': 'Recipient is required to send an email'}, 
+                {'detail': 'Recipient is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not instance.subject:
             return Response(
-                {'error': 'Subject is required to send an email'}, 
+                {'detail': 'Subject is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not instance.body:
             return Response(
-                {'error': 'Message body is required to send an email'}, 
+                {'detail': 'Message body is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
