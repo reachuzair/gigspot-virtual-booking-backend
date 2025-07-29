@@ -23,12 +23,14 @@ def signup(request):
     try:
         serializer = UserCreateSerializer(data=request.data)
         if not serializer.is_valid():
-            error_messages = []
-            for field, messages in serializer.errors.items():
-                label = "Error" if field == "__all__" else field
-                for msg in messages:
-                    error_messages.append(f"{label}: {msg}")
-            return Response({"details": " | ".join(error_messages)}, status=status.HTTP_400_BAD_REQUEST)
+            # Extract the first validation error and convert it to a generic format
+            first_key = next(iter(serializer.errors), None)
+            if first_key:
+                first_error = serializer.errors[first_key]
+                message = first_error[0] if isinstance(first_error, list) else str(first_error)
+                field_label = str(first_key).replace('_', ' ').capitalize()
+                return Response({"detail": f"{field_label}: {message}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Invalid data provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         role = serializer.validated_data.get('role', ROLE_CHOICES.FAN)
         stripe_response = None
@@ -107,6 +109,7 @@ def signup(request):
 
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 
