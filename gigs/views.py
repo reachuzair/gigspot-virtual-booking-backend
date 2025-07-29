@@ -1951,15 +1951,23 @@ def get_collab_payment_share(request, gig_id):
 @permission_classes([IsAuthenticated])
 def get_user_gigs(request):
     """
-    Get all gigs created by the artist (not including collaborations).
+    Get all gigs created by the artist, excluding gigs where a contract is signed by both artist and venue.
     """
     user = request.user
 
     if not hasattr(user, 'artist_profile'):
         return Response({'detail': 'Only artists can view their gigs.'}, status=403)
 
+    # Get IDs of gigs that have fully signed contracts (both artist and venue)
+    signed_gig_ids = Contract.objects.filter(
+        artist_signed=True,
+        venue_signed=True
+    ).values_list('gig_id', flat=True).distinct()
+
     gigs = Gig.objects.filter(
         created_by=user
+    ).exclude(
+        id__in=signed_gig_ids
     ).order_by('-created_at')
 
     serializer = GigSerializer(gigs, many=True, context={'request': request})
@@ -1968,8 +1976,6 @@ def get_user_gigs(request):
         "count": gigs.count(),
         "gigs": serializer.data
     })
-
-
 
 
 @api_view(['GET'])
