@@ -15,6 +15,9 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=BASE_DIR / '.env')
+
 # Load environment variables
 load_dotenv()
 
@@ -337,3 +340,6 @@ LOGGING = {
         },
     },
 }
+#soundcharts
+SOUNDCHART_APP_ID = os.getenv('SOUNDCHART_APP_ID')
+SOUNDCHART_API_KEY = os.getenv('SOUNDCHART_API_KEY')
