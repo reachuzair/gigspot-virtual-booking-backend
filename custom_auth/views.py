@@ -159,6 +159,16 @@ def resend_otp(request, email):
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+from stripe import Account, AccountLink
+def generate_stripe_onboarding_link(user, stripe_account_id):
+    link = AccountLink.create(
+        account=stripe_account_id,
+        refresh_url="https://www.gigspotvb.com/stripe/refresh",  # Adjust to your frontend
+        return_url="https://www.gigspotvb.com/stripe/return",    # Adjust to your frontend
+        type="account_onboarding"
+    )
+    return link.url
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -169,6 +179,7 @@ def login_view(request):
       • JWT refresh token
       • JWT access token
       • Serialized user object
+      • Stripe onboarding link (if applicable)
     """
     try:
         email = request.data.get('email', '').strip().lower()
@@ -187,20 +198,49 @@ def login_view(request):
         if not getattr(user, 'backend', None):
             user.backend = f"{ModelBackend.__module__}.{ModelBackend.__name__}"
 
-        login(request, user)  
+        login(request, user)
 
-        # Create JWTs
         refresh = RefreshToken.for_user(user)
+        onboarding_link = None
 
+        # Stripe logic based on role
+        if user.role == ROLE_CHOICES.ARTIST:
+            artist = getattr(user, 'artist_profile', None)
+            if artist and artist.stripe_account_id:
+                account = Account.retrieve(artist.stripe_account_id)
+                if not account.details_submitted:
+                    onboarding_link = generate_stripe_onboarding_link(user, artist.stripe_account_id)
+                    artist.stripe_onboarding_link = onboarding_link
+                    artist.save()
+                else:
+                    artist.stripe_onboarding_completed = True
+                    artist.save()
+
+        elif user.role == ROLE_CHOICES.VENUE:
+            venue = getattr(user, 'venue_profile', None)
+            account = Account.retrieve(venue.stripe_account_id)
+
+            if not account.details_submitted:
+                onboarding_link = generate_stripe_onboarding_link(user, venue.stripe_account_id)
+                venue.stripe_onboarding_link = onboarding_link
+                venue.save()
+            else:
+                venue.stripe_onboarding_completed = True
+                venue.save()
+        # Response
         return Response({
             "detail": "Login successful",
-            "refresh": str(refresh),                 # long‑lived token
-            "access": str(refresh.access_token),     # short‑lived token
-            "user": UserSerializer(user).data
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": UserSerializer(user).data,
+            "stripe_onboarding_link": onboarding_link
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
+        print("Login view error:", str(e))
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 @api_view(['GET'])
