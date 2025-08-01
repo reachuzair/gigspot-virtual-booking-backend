@@ -465,12 +465,12 @@ class SendDraftView(APIView):
             )
         if not instance.subject:
             return Response(
-                {'error': 'Subject is required to send an email'}, 
+                {'detail': 'Subject is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not instance.body:
             return Response(
-                {'error': 'Message body is required to send an email'}, 
+                {'detail': 'Message body is required to send an email'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         

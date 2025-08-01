@@ -34,7 +34,7 @@ def stripe_webhook(request):
     if not webhook_secret:
         logger.error('STRIPE_WEBHOOK_SECRET is not set in settings')
         return JsonResponse(
-            {'error': 'Webhook configuration error'}, 
+            {'detail': 'Webhook configuration error'}, 
             status=500
         )
     
@@ -47,19 +47,19 @@ def stripe_webhook(request):
     except ValueError as e:
         logger.error(f'Webhook error while parsing request: {str(e)}')
         return JsonResponse(
-            {'error': 'Invalid payload'}, 
+            {'detail': 'Invalid payload'}, 
             status=400
         )
     except stripe.error.SignatureVerificationError as e:
         logger.error(f'Webhook signature verification failed: {str(e)}')
         return JsonResponse(
-            {'error': 'Invalid signature'}, 
+            {'detail': 'Invalid signature'}, 
             status=400
         )
     except Exception as e:
         logger.error(f'Unexpected error in webhook: {str(e)}', exc_info=True)
         return JsonResponse(
-            {'error': 'Webhook processing failed'},
+            {'detail': 'Webhook processing failed'},
             status=400
         )
     
@@ -85,7 +85,7 @@ def stripe_webhook(request):
     except Exception as e:
         logger.error(f'Error handling webhook event {event_type}: {str(e)}', exc_info=True)
         return JsonResponse(
-            {'error': 'Error processing webhook'}, 
+            {'detail': 'Error processing webhook'}, 
             status=400
         )
 

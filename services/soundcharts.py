@@ -53,7 +53,7 @@ class SoundChartsAPI:
             dict: Search results or error information
         """
         if not name:
-            return {'error': 'Artist name is required', 'status_code': 400}
+            return {'detail': 'Artist name is required', 'status_code': 400}
             
         params = {
             'q': name,
@@ -75,10 +75,10 @@ class SoundChartsAPI:
                 'platforms': artist.get('platforms', {})
             }
         elif status == 200:
-            return {'error': 'No artists found', 'status_code': 404}
+            return {'detail': 'No artists found', 'status_code': 404}
         else:
             return {
-                'error': error or data.get('error', 'Unknown error'),
+                'detail': error or data.get('detail', 'Unknown error'),
                 'status_code': status
             }
 
@@ -97,7 +97,7 @@ class SoundChartsAPI:
         if not self.app_id or not self.api_key:
             error_msg = "Missing SoundCharts API credentials (app_id or api_key)"
             logger.error(error_msg)
-            return 401, {'error': error_msg}, error_msg
+            return 401, {'detail': error_msg}, error_msg
             
         try:
             # Build the URL
@@ -105,7 +105,7 @@ class SoundChartsAPI:
             if not endpoint:
                 error_msg = f"Unknown endpoint: {endpoint_name}"
                 logger.error(error_msg)
-                return 404, {'error': error_msg}, error_msg
+                return 404, {'detail': error_msg}, error_msg
                 
             url = self.BASE_URL + endpoint.format(**path_params)
             
@@ -135,7 +135,7 @@ class SoundChartsAPI:
             except ValueError as e:
                 error_msg = f"Failed to parse JSON response: {str(e)}"
                 logger.error(f"{error_msg}. Response: {response.text[:500]}")
-                return 500, {'error': error_msg}, error_msg
+                return 500, {'detail': error_msg}, error_msg
                 
         except requests.exceptions.RequestException as e:
             status_code = getattr(e.response, 'status_code', 500) if hasattr(e, 'response') else 500
@@ -145,16 +145,16 @@ class SoundChartsAPI:
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    error_msg = error_data.get('error', error_msg)
+                    error_msg = error_data.get('detail', error_msg)
                 except:
                     error_msg = e.response.text or error_msg
             
             logger.error(f"API request failed: {error_msg}")
-            return status_code, {'error': error_msg}, error_msg
+            return status_code, {'detail': error_msg}, error_msg
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return 500, {'error': error_msg}, error_msg
+            return 500, {'detail': error_msg}, error_msg
             # Log rate limit headers if present
             if 'X-RateLimit-Remaining' in response.headers:
                 logger.info(f"[DEBUG] Rate limit - Remaining: {response.headers['X-RateLimit-Remaining']} | Limit: {response.headers.get('X-RateLimit-Limit', '?')}")
@@ -173,7 +173,7 @@ class SoundChartsAPI:
             logger.error(f"API request to {url} failed with status {status_code}: {error_msg}")
             if hasattr(e, 'response') and e.response is not None:
                 logger.error(f"Error response content: {e.response.text}")
-            return status_code, {'error': error_msg}, error_msg
+            return status_code, {'detail': error_msg}, error_msg
 
     def get_artist_details(self, artist_uuid):
         """
@@ -186,7 +186,7 @@ class SoundChartsAPI:
             dict: Artist details or error information
         """
         if not artist_uuid:
-            return {'error': 'Artist UUID is required', 'status_code': 400}
+            return {'detail': 'Artist UUID is required', 'status_code': 400}
             
         status, data, error = self._make_request('artist', uuid=artist_uuid)
         
@@ -194,7 +194,7 @@ class SoundChartsAPI:
             return data
         else:
             return {
-                'error': error or data.get('error', 'Unknown error'),
+                'detail': error or data.get('detail', 'Unknown error'),
                 'status_code': status
             }
 
@@ -209,7 +209,7 @@ class SoundChartsAPI:
             dict: Artist statistics or error information
         """
         if not artist_uuid:
-            return {'error': 'Artist UUID is required', 'status_code': 400}
+            return {'detail': 'Artist UUID is required', 'status_code': 400}
             
         status, data, error = self._make_request(
             'artist_stats', 
@@ -221,7 +221,7 @@ class SoundChartsAPI:
             return data
         else:
             return {
-                'error': error or data.get('error', 'Unknown error'),
+                'detail': error or data.get('detail', 'Unknown error'),
                 'status_code': status
             }
 
@@ -239,7 +239,7 @@ class SoundChartsAPI:
         if not artist_uuid or not platform:
             return {
                 'success': False,
-                'error': 'Artist UUID and platform are required',
+                'detail': 'Artist UUID and platform are required',
                 'status_code': 400
             }
         
@@ -248,7 +248,7 @@ class SoundChartsAPI:
         if status != 200 or not isinstance(stats_data, dict) or 'social' not in stats_data:
             return {
                 'success': False,
-                'error': error or 'Failed to get artist stats',
+                'detail': error or 'Failed to get artist stats',
                 'status_code': status if status != 200 else 500
             }
         
@@ -288,7 +288,7 @@ class SoundChartsAPI:
             logger.error(error_msg, exc_info=True)
             followers_data.update({
                 'success': False,
-                'error': error_msg
+                'detail': error_msg
             })
         
         return followers_data
@@ -315,7 +315,7 @@ class SoundChartsAPI:
         if status != 200:
             return {
                 'success': False,
-                'error': data.get('error', error or 'Unknown error'),
+                'detail': data.get('detail', error or 'Unknown error'),
                 'status_code': status
             }
         
@@ -324,7 +324,7 @@ class SoundChartsAPI:
             if not isinstance(data, dict) or 'items' not in data or not data['items']:
                 return {
                     'success': False,
-                    'error': 'No audience data available',
+                    'detail': 'No audience data available',
                     'status_code': 404
                 }
             
@@ -343,7 +343,7 @@ class SoundChartsAPI:
             logger.error(f"Error processing audience data: {str(e)}", exc_info=True)
             return {
                 'success': False,
-                'error': f'Error processing audience data: {str(e)}',
+                'detail': f'Error processing audience data: {str(e)}',
                 'status_code': 500
             }
 
@@ -359,7 +359,7 @@ class SoundChartsAPI:
             dict: Parsed metrics with artist info and metrics
         """
         if not response_data or not isinstance(response_data, dict):
-            return {'error': 'Invalid response data', 'success': False}
+            return {'detail': 'Invalid response data', 'success': False}
             
         try:
             # Extract basic artist info from related section
@@ -458,7 +458,7 @@ class SoundChartsAPI:
             logger.error(f"Error parsing artist metrics: {str(e)}")
             return {
                 'success': False,
-                'error': str(e)
+                'detail': str(e)
             }
 
     def get_artist_buzz_score(self, artist_uuid):
@@ -479,7 +479,7 @@ class SoundChartsAPI:
         # Initialize default response
         default_response = {
             'success': False,
-            'error': 'Unknown error',
+            'detail': 'Unknown error',
             'buzz_score': 0,
             'metrics': {}
         }
@@ -490,7 +490,7 @@ class SoundChartsAPI:
                 logger.exception(f"{error_msg}: {str(exc)}")
             else:
                 logger.error(error_msg)
-            return {**default_response, 'error': error_msg}
+            return {**default_response, 'detail': error_msg}
             
         try:
             # Input validation
@@ -504,8 +504,8 @@ class SoundChartsAPI:
                 print("[DEBUG] Fetching artist details...")
                 artist_details = self.get_artist_details(artist_uuid)
                 print(f"[DEBUG] Artist details: {artist_details}")
-                if not artist_details or 'error' in artist_details: 
-                    error_msg = f"Failed to get artist details: {artist_details.get('error', 'Unknown error')}" if artist_details else "No artist details returned"
+                if not artist_details or 'detail' in artist_details: 
+                    error_msg = f"Failed to get artist details: {artist_details.get('detail', 'Unknown error')}" if artist_details else "No artist details returned"
                     return handle_error(error_msg)
             except Exception as e:
                 return handle_error("Error getting artist details", e)
@@ -515,8 +515,8 @@ class SoundChartsAPI:
                 print("[DEBUG] Fetching artist stats...")
                 artist_stats = self.get_artist_stats(artist_uuid)
                 print(f"[DEBUG] Artist stats: {artist_stats}")
-                if not artist_stats or 'error' in artist_stats: 
-                    error_msg = f"Failed to get artist stats: {artist_stats.get('error', 'Unknown error')}" if artist_stats else "No artist stats returned"
+                if not artist_stats or 'detail' in artist_stats: 
+                    error_msg = f"Failed to get artist stats: {artist_stats.get('detail', 'Unknown error')}" if artist_stats else "No artist stats returned"
                     return handle_error(error_msg)
             except Exception as e:
                 return handle_error("Error getting artist stats", e)

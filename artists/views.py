@@ -90,7 +90,7 @@ class ArtistAnalyticsView(APIView):
         if artist_id is None:
             if not hasattr(request.user, 'artist_profile'):
                 return Response(
-                    {'error': 'No artist profile found for this user'},
+                    {'detail': 'No artist profile found for this user'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             artist = request.user.artist_profile
@@ -101,7 +101,7 @@ class ArtistAnalyticsView(APIView):
                 request.user.artist_profile.id != artist_id
             ):
                 return Response(
-                    {'error': 'You do not have permission to view this artist\'s analytics'},
+                    {'detail': 'You do not have permission to view this artist\'s analytics'},
                     status=status.HTTP_403_FORBIDDEN
                 )
             artist = get_object_or_404(Artist, id=artist_id)
