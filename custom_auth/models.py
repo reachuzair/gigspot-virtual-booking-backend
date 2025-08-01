@@ -866,10 +866,10 @@ class Artist(models.Model):
                 self.save(update_fields=['soundcharts_uuid', 'updated_at'])
                 print(f"[DEBUG] Found SoundCharts UUID: {self.soundcharts_uuid}")
             else:
-                print(f"[WARNING] Could not find artist on SoundCharts: {search_result.get('error', 'Unknown error')}")
+                print(f"[WARNING] Could not find artist on SoundCharts: {search_result.get('detail', 'Unknown error')}")
                 return {
                     'success': False,
-                    'message': f"Could not find artist on SoundCharts: {search_result.get('error', 'Unknown error')}",
+                    'message': f"Could not find artist on SoundCharts: {search_result.get('detail', 'Unknown error')}",
                     'code': 'artist_not_found'
                 }
             
@@ -906,7 +906,7 @@ class Artist(models.Model):
             print(f"[DEBUG] API Response: {result}")
             
             if not result or not result.get('success'):
-                error_msg = result.get('error', 'Failed to fetch artist data from SoundCharts')
+                error_msg = result.get('detail', 'Failed to fetch artist data from SoundCharts')
                 logger.error(f"SoundCharts API error: {error_msg}")
                 return {
                     'success': False,

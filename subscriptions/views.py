@@ -246,7 +246,7 @@ class SubscriptionPlansView(APIView):
             logger.error(f"Error fetching subscription plans: {str(e)}", exc_info=True)
             
             return Response(
-                {'error': 'An error occurred while fetching subscription plans'},
+                {'detail': 'An error occurred while fetching subscription plans'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
@@ -631,7 +631,7 @@ def manage_artist_subscription(request):
     """
     if not request.user.is_authenticated:
         return Response(
-            {'error': 'Authentication required'},
+            {'detail': 'Authentication required'},
             status=status.HTTP_401_UNAUTHORIZED
         )
     
@@ -639,7 +639,7 @@ def manage_artist_subscription(request):
         artist = request.user.artist_profile
     except Artist.DoesNotExist:
         return Response(
-            {'error': 'Artist profile not found'},
+            {'detail': 'Artist profile not found'},
             status=status.HTTP_404_NOT_FOUND
         )
     
@@ -651,7 +651,7 @@ def manage_artist_subscription(request):
         
         if not payment_method_id or not plan_id:
             return Response(
-                {'error': 'Payment method and plan ID are required'},
+                {'detail': 'Payment method and plan ID are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -659,7 +659,7 @@ def manage_artist_subscription(request):
             plan = SubscriptionPlan.objects.get(id=plan_id, is_active=True)
         except SubscriptionPlan.DoesNotExist:
             return Response(
-                {'error': 'Invalid plan ID'},
+                {'detail': 'Invalid plan ID'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -693,7 +693,7 @@ def manage_artist_subscription(request):
                 
         except stripe.error.StripeError as e:
             return Response(
-                {'error': str(e)},
+                {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -702,7 +702,7 @@ def manage_artist_subscription(request):
         subscription = getattr(artist, 'subscription', None)
         if not subscription:
             return Response(
-                {'error': 'No active subscription found'},
+                {'detail': 'No active subscription found'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
@@ -715,11 +715,11 @@ def manage_artist_subscription(request):
             
         except stripe.error.StripeError as e:
             return Response(
-                {'error': str(e)},
+                {'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
     return Response(
-        {'error': 'Method not allowed'},
+        {'detail': 'Method not allowed'},
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )

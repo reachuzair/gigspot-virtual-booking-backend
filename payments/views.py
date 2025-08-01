@@ -141,7 +141,7 @@ class PaymentService:
             # Validate payment method is provided
             if not data.get('payment_method_id'):
                 return {
-                    'error': 'Payment method ID is required',
+                    'detail': 'Payment method ID is required',
                     'code': 'payment_method_required'
                 }, status.HTTP_400_BAD_REQUEST
             
@@ -151,7 +151,7 @@ class PaymentService:
                 # Only fans can purchase tickets
                 if not hasattr(user, 'fan'):
                     return {
-                        'error': 'Only fans can purchase tickets',
+                        'detail': 'Only fans can purchase tickets',
                         'code': 'invalid_user_type'
                     }, status.HTTP_403_FORBIDDEN
                 return PaymentService._create_ticket_payment_intent(user, data)
@@ -159,22 +159,22 @@ class PaymentService:
                 # Only artists and venues can subscribe
                 if not hasattr(user, 'artist_profile') and not hasattr(user, 'venue_profile'):
                     return {
-                        'error': 'Only artists and venues can subscribe to plans',
+                        'detail': 'Only artists and venues can subscribe to plans',
                         'code': 'invalid_user_type'
                     }, status.HTTP_403_FORBIDDEN
                 return PaymentService._create_subscription_payment_intent(user, data)
             else:
                 return {
-                    'error': 'Invalid payment type. Must be ticket_purchase or subscription',
+                    'detail': 'Invalid payment type. Must be ticket_purchase or subscription',
                     'code': 'invalid_payment_type'
                 }, status.HTTP_400_BAD_REQUEST
             
         except stripe.error.StripeError as e:
             logger.error(f'Stripe error creating payment intent: {str(e)}')
-            return {'error': str(e.user_message or str(e))}, status.HTTP_400_BAD_REQUEST
+            return {'detail': str(e.user_message or str(e))}, status.HTTP_400_BAD_REQUEST
         except Exception as e:
             logger.error(f'Error creating payment intent: {str(e)}', exc_info=True)
-            return {'error': 'An error occurred while processing your payment'}, status.HTTP_500_INTERNAL_SERVER_ERROR
+            return {'detail': 'An error occurred while processing your payment'}, status.HTTP_500_INTERNAL_SERVER_ERROR
     
     @staticmethod
     def _create_ticket_payment_intent(user, data):
@@ -213,14 +213,14 @@ class PaymentService:
             logger.info(f'Tickets type: {type(tickets) if tickets is not None else "None"}')
             if not tickets or not isinstance(tickets, list) or len(tickets) == 0:
                 return {
-                    'error': 'At least one ticket is required',
+                    'detail': 'At least one ticket is required',
                     'code': 'tickets_required'
                 }, status.HTTP_400_BAD_REQUEST
                 
             payment_method_id = data.get('payment_method_id')
             if not payment_method_id:
                 return {
-                    'error': 'Payment method ID is required',
+                    'detail': 'Payment method ID is required',
                     'code': 'payment_method_required'
                 }, status.HTTP_400_BAD_REQUEST
             
@@ -235,13 +235,13 @@ class PaymentService:
                 
                 if not gig_id:
                     return {
-                        'error': 'Gig ID is required for all tickets',
+                        'detail': 'Gig ID is required for all tickets',
                         'code': 'missing_gig_id'
                     }, status.HTTP_400_BAD_REQUEST
                     
                 if quantity < 1:
                     return {
-                        'error': 'Quantity must be at least 1',
+                        'detail': 'Quantity must be at least 1',
                         'code': 'invalid_quantity'
                     }, status.HTTP_400_BAD_REQUEST
                 
@@ -267,7 +267,7 @@ class PaymentService:
                         )
                     except Gig.DoesNotExist:
                         return {
-                            'error': f'Gig with ID {gig_id} not found or not approved',
+                            'detail': f'Gig with ID {gig_id} not found or not approved',
                             'code': 'gig_not_found',
                             'gig_id': gig_id
                         }, status.HTTP_404_NOT_FOUND
@@ -278,7 +278,7 @@ class PaymentService:
                         available_tickets = gig.max_tickets - tickets_sold
                         if available_tickets < quantity:
                             return {
-                                'error': f'Not enough tickets available for gig {gig_id}. Only {available_tickets} ticket(s) left',
+                                'detail': f'Not enough tickets available for gig {gig_id}. Only {available_tickets} ticket(s) left',
                                 'code': 'insufficient_tickets',
                                 'available': available_tickets,
                                 'gig_id': gig_id
@@ -434,7 +434,7 @@ class PaymentService:
                         logger.error(f'Error refunding tickets: {str(refund_error)}')
                 
                 return {
-                    'error': str(e.user_message) if hasattr(e, 'user_message') else 'Your card was declined',
+                    'detail': str(e.user_message) if hasattr(e, 'user_message') else 'Your card was declined',
                     'code': e.code if hasattr(e, 'code') else 'card_error',
                     'decline_code': getattr(e, 'decline_code', None)
                 }, status.HTTP_400_BAD_REQUEST
@@ -451,16 +451,16 @@ class PaymentService:
                         logger.error(f'Error refunding tickets: {str(refund_error)}')
                 
                 return {
-                    'error': 'An error occurred while processing your payment',
+                    'detail': 'An error occurred while processing your payment',
                     'code': 'payment_processing_error'
                 }, status.HTTP_500_INTERNAL_SERVER_ERROR
             
         except ValueError as ve:
             logger.error(f'Validation error in ticket purchase: {str(ve)}')
-            return {'error': str(ve)}, status.HTTP_400_BAD_REQUEST
+            return {'detail': str(ve)}, status.HTTP_400_BAD_REQUEST
         except Exception as e:
             logger.error(f'Error creating ticket payment intent: {str(e)}', exc_info=True)
-            return {'error': 'Failed to process payment'}, status.HTTP_500_INTERNAL_SERVER_ERROR
+            return {'detail': 'Failed to process payment'}, status.HTTP_500_INTERNAL_SERVER_ERROR
     
 
 @api_view(['POST'])
@@ -518,7 +518,7 @@ def create_payment_intent(request, gig_id=None):
     except Exception as e:
         logger.error(f'Unexpected error in create_payment_intent: {str(e)}', exc_info=True)
         return Response(
-            {'error': 'An unexpected error occurred while processing your request'},
+            {'detail': 'An unexpected error occurred while processing your request'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -548,7 +548,7 @@ def _create_subscription_payment_intent(user, data):
             
             if not plan_id or not payment_method_id:
                 return {
-                    'error': 'Plan ID and payment method ID are required',
+                    'detail': 'Plan ID and payment method ID are required',
                     'code': 'missing_required_fields'
                 }, status.HTTP_400_BAD_REQUEST
             
@@ -558,7 +558,7 @@ def _create_subscription_payment_intent(user, data):
             
             if not (is_artist or is_venue):
                 return {
-                    'error': 'Only artists and venues can subscribe to plans',
+                    'detail': 'Only artists and venues can subscribe to plans',
                     'code': 'invalid_user_type'
                 }, status.HTTP_403_FORBIDDEN
             
@@ -570,7 +570,7 @@ def _create_subscription_payment_intent(user, data):
                     plan = VenueAdPlan.objects.get(id=plan_id, is_active=True)
             except (SubscriptionPlan.DoesNotExist, VenueAdPlan.DoesNotExist):
                 return {
-                    'error': 'Subscription plan not found',
+                    'detail': 'Subscription plan not found',
                     'code': 'plan_not_found'
                 }, status.HTTP_404_NOT_FOUND
             
@@ -641,7 +641,7 @@ def _create_subscription_payment_intent(user, data):
         except stripe.error.CardError as e:
             logger.error(f'Card error during subscription: {str(e)}')
             return {
-                'error': e.user_message or 'Card payment failed',
+                'detail': e.user_message or 'Card payment failed',
                 'code': e.code or 'card_error',
                 'decline_code': getattr(e, 'decline_code', None)
             }, status.HTTP_400_BAD_REQUEST
@@ -649,7 +649,7 @@ def _create_subscription_payment_intent(user, data):
         except stripe.error.StripeError as e:
             logger.error(f'Stripe error during subscription: {str(e)}')
             return {
-                'error': str(e.user_message or 'Failed to create subscription'),
+                'detail': str(e.user_message or 'Failed to create subscription'),
                 'code': getattr(e, 'code', 'stripe_error'),
                 'decline_code': getattr(e, 'decline_code', None)
             }, status.HTTP_400_BAD_REQUEST
@@ -657,7 +657,7 @@ def _create_subscription_payment_intent(user, data):
         except Exception as e:
             logger.error(f'Error in subscription payment intent: {str(e)}', exc_info=True)
             return {
-                'error': 'An error occurred while processing your subscription',
+                'detail': 'An error occurred while processing your subscription',
                 'code': 'subscription_error'
             }, status.HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -1017,7 +1017,7 @@ def handle_contract_signature(request):
     payment_intent_id = request.data.get('payment_intent_id')
     
     if not payment_intent_id:
-        return Response({'error': 'payment_intent_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': 'payment_intent_id is required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         # Retrieve the payment intent
@@ -1025,7 +1025,7 @@ def handle_contract_signature(request):
         
         # Check if the payment was successful
         if payment_intent.status != 'succeeded':
-            return Response({'error': 'Payment intent not successful'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Payment intent not successful'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Handle the contract signature logic here
         # For example, update the contract status in your database
@@ -1061,8 +1061,8 @@ def handle_contract_signature(request):
     
     except stripe.error.StripeError as e:
         logger.error(f'Stripe error: {str(e)}')
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     except Exception as e:
         logger.error(f'Unexpected error: {str(e)}', exc_info=True)
-        return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'detail': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

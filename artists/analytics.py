@@ -36,14 +36,14 @@ class ArtistAnalyticsView(APIView):
             if artist_id:
                 if not request.user.is_staff:
                     return Response(
-                        {'error': 'You do not have permission to view this artist\'s analytics'},
+                        {'detail': 'You do not have permission to view this artist\'s analytics'},
                         status=status.HTTP_403_FORBIDDEN
                     )
                 artist = get_object_or_404(Artist, id=artist_id)
             else:
                 if not hasattr(request.user, 'artist_profile'):
                     return Response(
-                        {'error': 'No artist profile found for this user'},
+                        {'detail': 'No artist profile found for this user'},
                         status=status.HTTP_404_NOT_FOUND
                     )
                 artist = request.user.artist_profile
@@ -54,7 +54,7 @@ class ArtistAnalyticsView(APIView):
             # Check if we have any metrics data
             if not artist.last_metrics_update:
                 return Response(
-                    {'error': 'No analytics data available'},
+                    {'detail': 'No analytics data available'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
@@ -71,6 +71,6 @@ class ArtistAnalyticsView(APIView):
         except Exception as e:
             logger.error(f"Error in ArtistAnalyticsView: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'An error occurred while fetching analytics data'},
+                {'detail': 'An error occurred while fetching analytics data'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
