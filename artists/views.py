@@ -164,11 +164,6 @@ def get_nearby_events(request):
     return Response({'results': serializer.data})
 
 
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-
 class ArtistMerchView(APIView):
     permission_classes = [IsAuthenticated]
 
