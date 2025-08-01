@@ -168,12 +168,13 @@ class ArtistMerchView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_artist(self, user):
-        
         artist = getattr(user, 'artist_profile', None)
         if not artist:
             return None, Response({'detail': 'Only artists can access this endpoint.'}, status=status.HTTP_403_FORBIDDEN)
-        if artist.subscription_tier.strip().upper() != 'PREMIUM':
+        subscription = getattr(artist, 'subscription', None)
+        if not subscription or subscription.plan.subscription_tier.upper() != 'PREMIUM':
             return None, Response({'detail': 'Premium subscription required.'}, status=status.HTTP_403_FORBIDDEN)
+
         return artist, None
 
     def get(self, request):
@@ -194,5 +195,6 @@ class ArtistMerchView(APIView):
         artist.merch_url = merch_url
         artist.save()
         return Response({'detail': 'Merch URL saved successfully.'}, status=status.HTTP_200_OK)
+
 
 
