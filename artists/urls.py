@@ -7,4 +7,5 @@ urlpatterns = [
     path('analytics/', views.ArtistAnalyticsView.as_view(), name='artist-analytics'),
     path('analytics/<int:artist_id>/', views.ArtistAnalyticsView.as_view(), name='artist-analytics-detail'),
     path('nearby-events/', views.get_nearby_events, name='nearby_events'),
+    path('artist-merch-url/',views.ArtistMerchView.as_view(), name='artist_merch_url'),
 ]

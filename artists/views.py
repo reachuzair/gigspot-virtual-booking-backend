@@ -162,3 +162,37 @@ def get_nearby_events(request):
 
     serializer = GigSerializer(gigs, many=True, context={'request': request})
     return Response({'results': serializer.data})
+
+
+class ArtistMerchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_artist(self, user):
+        
+        artist = getattr(user, 'artist_profile', None)
+        if not artist:
+            return None, Response({'detail': 'Only artists can access this endpoint.'}, status=status.HTTP_403_FORBIDDEN)
+        if artist.subscription_tier.strip().upper() != 'PREMIUM':
+            return None, Response({'detail': 'Premium subscription required.'}, status=status.HTTP_403_FORBIDDEN)
+        return artist, None
+
+    def get(self, request):
+        artist, error = self.get_artist(request.user)
+        if error:
+            return error
+        return Response({'merch_url': artist.merch_url}, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        artist, error = self.get_artist(request.user)
+        if error:
+            return error
+
+        merch_url = request.data.get('merch_url')
+        if not merch_url:
+            return Response({'detail': 'Merch URL is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        artist.merch_url = merch_url
+        artist.save()
+        return Response({'detail': 'Merch URL saved successfully.'}, status=status.HTTP_200_OK)
+
+
