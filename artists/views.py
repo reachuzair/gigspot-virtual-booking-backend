@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from custom_auth.models import Artist, PerformanceTier, Venue
+from custom_auth.models import ROLE_CHOICES, Artist, PerformanceTier, Venue
 from gigs.models import Gig, Status
 from gigs.serializers import GigSerializer
 from .serializers import  ArtistAnalyticsSerializer, ArtistSerializer
@@ -130,7 +130,7 @@ def get_nearby_events(request):
     user = request.user
 
     # Ensure only artists are allowed
-    if user.role != 'artist':
+    if user.role != ROLE_CHOICES.ARTIST:
         return Response(
             {"detail": "Only artists can access nearby events."},
             status=status.HTTP_403_FORBIDDEN
