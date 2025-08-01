@@ -642,6 +642,7 @@ class Artist(models.Model):
         null=True,
         help_text="Contact phone number with country code"
     )
+    merch_url = models.URLField(blank=True, null=True)
     verification_docs = models.FileField(
         upload_to='artist_verification_docs', 
         blank=True, 
