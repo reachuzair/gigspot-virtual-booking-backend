@@ -1,11 +1,22 @@
 from rest_framework import serializers
 from custom_auth.models import User, Artist, Venue, Fan
 from custom_auth.serializers import UserSerializer
+from subscriptions.models import ArtistSubscription
 
 
 class ArtistProfileSerializer(serializers.ModelSerializer):
     user= UserSerializer(read_only=True)
     likes= serializers.IntegerField(source='likes.count', read_only=True)
+
+    def update(self, instance, validated_data):
+        if 'merch_url' in validated_data:
+            subscription = ArtistSubscription.objects.filter(artist=instance, status='active').first()
+            if not subscription or subscription.plan.subscription_tier.upper() != 'PREMIUM':
+                raise serializers.ValidationError({
+                    'detail': 'Only premium artists can update merch URL.'
+                })
+
+        return super().update(instance, validated_data)
     class Meta:
         model = Artist
         fields = '__all__'
