@@ -292,7 +292,7 @@ def create_venue_event(request):
 
     if max_tickets > venue.capacity:
         return Response(
-            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.name}, which is {venue.capacity} people'},
+            {'detail': f'Maximum tickets cannot exceed venue capacity of {venue.user.name}, which is {venue.capacity} people'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
