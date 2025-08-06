@@ -1,5 +1,7 @@
 
 from rest_framework import generics, permissions
+
+from custom_auth.serializers import UserSerializer
 from .models import ChatRoom, Message, MessageReadStatus
 from .serializers import ChatRoomSerializer, MessageSerializer
 from rest_framework.views import APIView
@@ -164,7 +166,6 @@ class DeleteMessageView(APIView):
             return Response({"detail": f"{deleted_count} messages deleted successfully."}, status=204)
 
 
-from users.serializers import UserSerializer
 
 class InboxView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -193,27 +194,27 @@ class InboxView(APIView):
                 others = room.participants.exclude(id=user.id)
                 other_user_obj = others.first() if others.exists() else None
 
-            # Serialize other_user
-            other_user_data = UserSerializer(other_user_obj).data if other_user_obj else None
+            # Serialize sender and recipient if last message exists
+            sender_data = UserSerializer(last_message.sender).data if last_message else None
+            recipient_data = UserSerializer(other_user_obj).data if other_user_obj else None
 
             room_list.append({
                 "room_id": room.id,
                 "room_name": room.name if room.name else f"Chat {room.id}",
                 "room_type": room.room_type,
-                "other_user": other_user_data,
+                "other_user": recipient_data,  # recipient in a private chat
                 "last_message": {
                     "id": last_message.id,
                     "text": last_message.content.get("text", "") if last_message else "",
-                    "sender": last_message.sender.name if last_message else "",
-                    'sender_id': last_message.sender.id if last_message else None,
-                    "receiver": last_message.receiver.name if last_message and last_message.receiver else None,
-                    "receiver_id": last_message.receiver.id if last_message and last_message.receiver else None,
+                    "sender": sender_data,
+                    "recipient": recipient_data,
                     "timestamp": last_message.timestamp if last_message else None,
                 } if last_message else None,
                 "unread_count": unread_count,
             })
 
         return Response(room_list, status=200)
+
 
 
 class MarkMessagesAsReadView(APIView):
