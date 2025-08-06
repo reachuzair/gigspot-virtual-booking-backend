@@ -205,6 +205,7 @@ class InboxView(APIView):
                     "id": last_message.id,
                     "text": last_message.content.get("text", "") if last_message else "",
                     "sender": last_message.sender.name if last_message else "",
+                    "receiver": last_message.receiver.name if last_message and last_message.receiver else None,
                     "timestamp": last_message.timestamp if last_message else None,
                 } if last_message else None,
                 "unread_count": unread_count,
