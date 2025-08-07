@@ -302,6 +302,9 @@ class GigDetailSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     collaborators = UserSerializer(many=True, read_only=True)
     invitees = UserSerializer(many=True, read_only=True)
+    support_artists = serializers.SerializerMethodField()
+
+    
 
     class Meta:
         model = Gig
@@ -310,7 +313,7 @@ class GigDetailSerializer(serializers.ModelSerializer):
             'booking_end_date', 'flyer_image', 'minimum_performance_tier',
             'max_artists', 'max_tickets', 'ticket_price', 'venue_fee',
             'status', 'gig_type', 'is_public', 'sold_out', 'slot_available',
-            'likes_count', 'is_liked', 'venue', 'created_by', 'collaborators','request_message',
+            'likes_count', 'is_liked', 'venue', 'created_by', 'collaborators','support_artists','request_message',
             'invitees', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -323,6 +326,13 @@ class GigDetailSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             return obj.likes.filter(id=request.user.id).exists()
         return False
+    def get_support_artists(self, obj):
+        collaborators = list(obj.collaborators.all())
+        if obj.created_by not in collaborators:
+            collaborators.append(obj.created_by)
+
+        return UserSerializer(collaborators, many=True).data
+
 
 
 class VenueEventSerializer(serializers.ModelSerializer):

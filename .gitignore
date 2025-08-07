@@ -72,3 +72,4 @@ celerybeat.pid
 cleanup_orphaned_values.py
 
 db.sqlite3
+*.sqlite3
