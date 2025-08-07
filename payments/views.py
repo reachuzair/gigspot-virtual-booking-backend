@@ -11,7 +11,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from custom_auth.models import Artist
+from custom_auth.models import Artist, User
+from custom_auth.serializers import UserSerializer
 from gigs.models import Contract, Gig
 from payments.models import Payment, PaymentStatus
 from rest_framework.views import APIView
@@ -467,60 +468,79 @@ class PaymentService:
 @permission_classes([IsAuthenticated])
 @csrf_exempt
 def create_payment_intent(request, gig_id=None):
-    # Import models locally to prevent AppRegistryNotReady error
-    from .models import PaymentStatus
+    from .models import PaymentStatus  # Prevent AppRegistryNotReady error
+
     """
     Create a payment intent for ticket purchases or subscriptions.
-    
-    Request format for gig ticket purchase (fans only):
+
+    Request format for ticket purchase:
     {
         "payment_type": "ticket_purchase",
-        "item_id": 123,  # gig_id can also be passed in the URL
+        "item_id": 123,  # gig_id also accepted via URL
         "quantity": 1,
         "save_payment_method": false,
-        "payment_method_id": "pm_xxx"
+        "payment_method_id": "pm_xxx",
+        "support_artist_id": 45   # <-- Now required (must be USER ID of artist)
     }
-    
-    Request format for subscription (artists/venues):
+
+    Request format for subscription:
     {
         "payment_type": "subscription",
         "plan_id": 1,
         "payment_method_id": "pm_xxx",
-        "billing_interval": "month"  # or "year"
+        "billing_interval": "month"
     }
-    
-    The gig_id can be provided either in the URL or in the request body (item_id).
-    If both are provided, the one in the request body takes precedence.
     """
+
     try:
-        # Debug logging for incoming request
-        logger.info('-' * 50)
-        logger.info('Raw request data:')
-        logger.info(f'Request data type: {type(request.data)}')
-        logger.info(f'Request data content: {request.data}')
-        logger.info('-' * 50)
-        
-        # Make a copy of the request data to avoid modifying the original
         data = request.data.copy()
-        
-        # Debug logging after copy
-        logger.info('After copying request data:')
-        logger.info(f'Data type: {type(data)}')
-        logger.info(f'Data content: {data}')
-        
-        # If this is a ticket purchase and gig_id is in URL but not in data, add it to data
         if data.get('payment_type') == 'ticket_purchase' and gig_id and 'item_id' not in data:
             data['item_id'] = str(gig_id)
-            logger.info(f'Added gig_id {gig_id} to data as item_id')
-            
+
+        if data.get('payment_type') == 'ticket_purchase':
+            support_artist_id = data.get('support_artist_id')
+            if not support_artist_id:
+                return Response(
+                    {"detail": "support_artist_id is required for ticket purchases"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                support_artist_user = User.objects.get(id=support_artist_id)
+                if not hasattr(support_artist_user, 'artist_profile') and not hasattr(support_artist_user, 'venue_profile'):
+                    return Response(
+                        {"detail": "Provided user is neither an artist nor a venue"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except User.DoesNotExist:
+                return Response(
+                    {"detail": "Support artist not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            except User.DoesNotExist:
+                return Response(
+                    {"detail": "Support artist not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Process the payment
         response, status_code = PaymentService.create_payment_intent(request.user, data)
+
+        # If support artist exists, include it in response
+        if data.get('payment_type') == 'ticket_purchase':
+            response['support_artist'] = UserSerializer(support_artist_user).data
+
         return Response(response, status=status_code)
+
     except Exception as e:
         logger.error(f'Unexpected error in create_payment_intent: {str(e)}', exc_info=True)
         return Response(
             {'detail': 'An unexpected error occurred while processing your request'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
 
 def _create_subscription_payment_intent(user, data):
         """
