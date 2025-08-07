@@ -132,17 +132,25 @@ def update_notification_settings(request):
         if key not in allowed_keys:
             return Response({"detail": "Invalid key"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not isinstance(value, bool):
-            return Response({"detail": "Value must be a boolean (true or false)."}, status=status.HTTP_400_BAD_REQUEST)
+        if isinstance(value, bool):
+            bool_value = value
+        elif isinstance(value, str) and value.lower() in ['true', 'false']:
+            bool_value = value.lower() == 'true'
+        else:
+            return Response({"detail": "Value must be a boolean or 'true'/'false'"}, status=status.HTTP_400_BAD_REQUEST)
 
-        user_settings, created = UserSettings.objects.get_or_create(user=user)
-        setattr(user_settings, key, value)
+        user_settings, _ = UserSettings.objects.get_or_create(user=user)
+        setattr(user_settings, key, bool_value)
         user_settings.save()
 
-        return Response({"detail": "Notification settings updated successfully"}, status=status.HTTP_200_OK)
+        return Response({
+            "detail": "Notification settings updated successfully",
+            key: bool_value
+        }, status=status.HTTP_200_OK)
 
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 
