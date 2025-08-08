@@ -13,7 +13,6 @@ from custom_auth.models import Artist, Venue
 from .models import ArtistSubscription, VenueSubscription, SubscriptionPlan, VenueAdPlan
 from .services import PlanService, SubscriptionService
 
-
 class BaseSubscriptionView(APIView):
     """
     Base view for subscription management.
@@ -106,7 +105,7 @@ class BaseSubscriptionView(APIView):
 
             try:
                 plan = self.get_plan(plan_id)
-            except Http404 as e:
+            except Http404:
                 return self._error_response("Invalid plan")
 
             subscription, client_secret = SubscriptionService.create_subscription(
@@ -115,6 +114,20 @@ class BaseSubscriptionView(APIView):
                 subscription_type=self.subscription_type,
                 payment_method_id=payment_method_id
             )
+
+            # Save stripe_price_id and current_period_end to artist profile
+            if request.user.role == 'artist':
+                artist_profile = getattr(request.user, 'artist_profile', None)
+                if artist_profile:
+                    artist_profile.stripe_price_id = plan.id
+                    artist_profile.current_period_end = subscription.current_period_end
+                    artist_profile.save(update_fields=['stripe_price_id', 'current_period_end'])
+            elif request.user.role == 'venue':
+                venue_profile = getattr(request.user, 'venue_profile', None)
+                if venue_profile:
+                    venue_profile.stripe_price_id = plan.id
+                    venue_profile.current_period_end = subscription.current_period_end
+                    venue_profile.save(update_fields=['stripe_price_id', 'current_period_end'])
 
             return Response({
                 'subscription_id': str(subscription.id),
@@ -202,3 +215,4 @@ class BaseSubscriptionView(APIView):
             ),
             "cancel_at_period_end": getattr(subscription, 'cancel_at_period_end', False)
         })
+

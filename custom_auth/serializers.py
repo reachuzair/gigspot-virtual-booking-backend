@@ -39,7 +39,7 @@ class VenueSerializer(serializers.ModelSerializer):
             'city', 'state', 'address', 'capacity', 'amenities',
             'reservation_fee', 'artist_capacity', 'is_completed',
             'stripe_account_id', 'stripe_onboarding_completed','stripe_onboarding_link',
-            'profileImage', 'proof_type', 'proof_document', 'proof_url','is_completed',
+            'profileImage', 'proof_type', 'proof_document', 'proof_url','is_completed','current_period_end', 'stripe_price_id'
 
         )
 
