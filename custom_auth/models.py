@@ -656,6 +656,12 @@ class Artist(models.Model):
         null=True,
         help_text="Artist's profile image/logo"
     )
+    stripe_price_id = models.CharField(max_length=255, blank=True, null=True)
+    current_period_end= models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="End date of the current subscription period"
+    )
     band_name = models.CharField(
         max_length=255, 
         blank=True, 
@@ -1595,6 +1601,8 @@ class Venue(models.Model):
         default=False,
         help_text="Whether Stripe onboarding is completed"
     )
+    stripe_price_id = models.CharField(max_length=255, blank=True, null=True)
+    current_period_end = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
