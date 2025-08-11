@@ -172,7 +172,8 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
 ]
 CSRF_TRUSTED_ORIGINS = [
-    "http://app.gigspotvb.com", 
+    "http://app.gigspotvb.com",
+    "https://app.gigspotvb.com",  
 ]
 
 ROOT_URLCONF = 'gigspot_backend.urls'
