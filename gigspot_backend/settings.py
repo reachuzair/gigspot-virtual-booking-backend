@@ -171,6 +171,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
 ]
+CSRF_TRUSTED_ORIGINS = [
+    "http://app.gigspotvb.com", 
+]
 
 ROOT_URLCONF = 'gigspot_backend.urls'
 
