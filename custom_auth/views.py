@@ -331,5 +331,34 @@ def delete_account(request):
     if not user.check_password(password):
         return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
 
-    user.delete()
-    return Response({"detail": "Account deleted successfully."}, status=status.HTTP_200_OK)
+    try:
+        # Use a transaction to ensure atomicity
+        with transaction.atomic():
+            # Manually delete related objects first to avoid cascade recursion
+            
+            # Delete notifications first (this is likely the source of recursion)
+            if hasattr(user, 'notifications'):
+                user.notifications.all().delete()
+            
+            # Delete gig-related objects
+            if hasattr(user, 'created_gigs'):
+                user.created_gigs.all().delete()
+            if hasattr(user, 'gig_invites_sent'):
+                user.gig_invites_sent.all().delete()
+            
+            # Delete profile objects (these should cascade properly)
+            if hasattr(user, 'artist_profile'):
+                user.artist_profile.delete()
+            if hasattr(user, 'venue_profile'):
+                user.venue_profile.delete()
+            if hasattr(user, 'fan'):
+                user.fan.delete()
+            
+            # Finally delete the user
+            user.delete()
+                
+        return Response({"detail": "Account deleted successfully."}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error deleting user account: {str(e)}")
+        return Response({"detail": "An error occurred while deleting the account."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
