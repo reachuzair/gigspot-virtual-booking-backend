@@ -371,17 +371,25 @@ class LikeGigView(APIView):
 
 class UserLikedGigsView(APIView):
     """
-    List all gigs liked by the current user
+    List all gigs liked by the current user, with optional filters
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Get the current user
         user = request.user
         print(f"Fetching liked gigs for user: {user.id} - {user.email}")
 
-        # Get all gigs liked by the user
-        liked_gigs = Gig.objects.filter(likes=user).order_by('-created_at')
+        # Base queryset: gigs liked by the user
+        liked_gigs = Gig.objects.filter(likes=user)
+
+        # Optional filter: city
+        city = request.query_params.get('city')
+        if city:
+            liked_gigs = liked_gigs.filter(venue__city__iexact=city)  # case-insensitive exact match
+            print(f"Filtering gigs by city: {city}")
+
+        # Order by newest
+        liked_gigs = liked_gigs.order_by('-created_at')
         print(f"Found {liked_gigs.count()} liked gigs for user {user.id}")
 
         # Serialize the results
@@ -391,7 +399,6 @@ class UserLikedGigsView(APIView):
             context={'request': request}
         )
 
-        # Log the results for debugging
         print(f"Serialized {len(serializer.data)} gigs for user {user.id}")
 
         return Response({

@@ -112,9 +112,15 @@ def liked_artists_view(request):
         )
 
     liked_artists = Artist.objects.filter(likes=user).select_related('user')
+
+    # Optional city filter
+    city = request.query_params.get('city')
+    if city:
+        liked_artists = liked_artists.filter(city__iexact=city)  # exact match, case-insensitive
+
     serializer = ArtistSerializer(liked_artists, many=True, context={'request': request})
 
     return Response({
         "liked_artists": serializer.data,
-        "count": len(serializer.data)
+        "count": liked_artists.count()
     }, status=status.HTTP_200_OK)
