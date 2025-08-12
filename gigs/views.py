@@ -2062,4 +2062,39 @@ def my_gigs(request, gig_id=None):
 
     except Gig.DoesNotExist:
         return Response({'detail': 'Gig not found'}, status=status.HTTP_404_NOT_FOUND)
+from django.core.mail import send_mail
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_cancel_collaboration(request):
+    try:
+        gig_id = request.data.get('gig_id')
+        user = request.user
+        email = user.email
 
+        if not gig_id:
+            return Response({"detail": "gig_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        gig = Gig.objects.filter(id=gig_id).first()
+        if not gig:
+            return Response({"detail": "Gig not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if user not in gig.collaborators.all():
+            return Response({"detail": "You are not a collaborator for this gig"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate OTP
+        otp = str(random.randint(100000, 999999))
+        user.ver_code = otp
+        user.ver_code_expires = timezone.now() + timedelta(minutes=10)
+        user.save()
+
+        # Send OTP via email
+        send_mail(
+            subject="Cancel Collaboration OTP",
+            to=email,
+            body=f"Your OTP for cancelling collaboration in '{gig.title}' is: {otp}"
+        )
+
+        return Response({"detail": "OTP sent to your registered email"}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)

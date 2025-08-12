@@ -5,6 +5,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import login, logout
+
+from gigs.models import Gig
 from .models import User, Artist, Venue, Fan, ROLE_CHOICES
 from .serializers import ArtistSerializer, FanSerializer, UserCreateSerializer, UserSerializer, VenueSerializer
 from utils.email import send_templated_email
@@ -114,28 +116,60 @@ def signup(request):
 
 
 @api_view(['PUT'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def verify_otp(request):
+    """
+    Universal OTP verification endpoint.
+    - If only `email` + `otp` provided → verifies email.
+    - If `gig_id` also provided → cancels collaboration for that gig.
+    """
     try:
         email = request.data.get('email')
         otp = request.data.get('otp')
+        gig_id = request.data.get('gig_id')  # Optional for collaboration cancel
+
+        if not email or not otp:
+            return Response({"detail": "Email and OTP are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.filter(email=email).first()
         if not user:
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # OTP validation
         if user.ver_code != otp:
             return Response({"detail": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
         if user.ver_code_expires < timezone.now():
             return Response({"detail": "OTP expired"}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.email_verified = True
+        # Collaboration cancellation mode
+        if gig_id:
+            gig = Gig.objects.filter(id=gig_id).first()
+            if not gig:
+                return Response({"detail": "Gig not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            if user not in gig.collaborators.all():
+                return Response({"detail": "You are not a collaborator for this gig"}, status=status.HTTP_400_BAD_REQUEST)
+
+            gig.collaborators.remove(user)
+
+            action_detail = "Collaboration cancelled successfully"
+        
+        # Email verification mode
+        else:
+            user.email_verified = True
+            action_detail = "Email verified successfully"
+
+        # Clear OTP
         user.ver_code = None
         user.ver_code_expires = None
         user.save()
 
-        return Response({"detail": "Email verified successfully", "user": UserSerializer(user).data}, status=status.HTTP_200_OK)
+        return Response({
+            "detail": action_detail,
+            "user": UserSerializer(user).data
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

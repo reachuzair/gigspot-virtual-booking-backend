@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_event_by_date, get_user_gigs, invited_list, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_gigs, my_requests, pending_venue_gigs,
+    GigByCityView, SelectedTourVenuesView, artist_event_history, get_collab_payment_share, get_contract_by_gig, get_event_by_date, get_user_gigs, invited_list, list_gigs, GigDetailView, LikeGigView, UserLikedGigsView, UpcomingGigsView, my_gigs, my_requests, pending_venue_gigs, request_cancel_collaboration,
     send_invite_request, accept_invite_request, reject_invite_request,
     initiate_gig, add_gig_type, add_gig_details, signed_events, update_gig_status,
     generate_contract, get_contract, sign_contract, generate_contract_pin,
@@ -67,6 +67,8 @@ gig_urls = [
     path('events/signed/<int:contract_id>/', signed_events, name='signed-events-artist'),
      path('<int:gig_id>/collab-share/', get_collab_payment_share, name='get-collab-payment-share'),
      path('Myrequests/', get_user_gigs, name='my_requests'),
+     #Cancel Participation
+     path('cancel-participation/', request_cancel_collaboration, name='cancel_participation'),
 ]
 
 # Tour URL patterns
