@@ -116,7 +116,7 @@ def signup(request):
 
 
 @api_view(['PUT'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def verify_otp(request):
     """
     Universal OTP verification endpoint.
