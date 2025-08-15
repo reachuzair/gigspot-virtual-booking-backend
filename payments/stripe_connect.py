@@ -64,9 +64,9 @@ class StripeConnectView(APIView):
         try:
             account_links = stripe.AccountLink.create(
                 account=stripe_account_id,
-                refresh_url=f"{settings.FRONTEND_URL}/dashboard/payments?tab=withdrawals",
-                return_url=f"{settings.FRONTEND_URL}/dashboard/payments?tab=withdrawals",
-                type='account_onboarding',
+                refresh_url=f"https://www.gigspotvb.com/",
+                return_url=f"https://www.gigspotvb.com/",
+                type="account_onboarding"
             )
             return account_links.url
         except stripe.error.StripeError as e:
